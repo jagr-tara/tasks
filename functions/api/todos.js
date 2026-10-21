@@ -1,5 +1,5 @@
 // Cloudflare Pages Function: /api/todos
-// Handles GET, POST, PUT, and DELETE against Cloudflare D1 (env.DB)
+// Handles GET, POST, PUT, and DELETE against Cloudflare D1 (env.DB) with password authentication
 
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -8,7 +8,7 @@ function jsonResponse(data, status = 200) {
       "Content-Type": "application/json",
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Headers": "Content-Type, X-App-Password",
     },
   });
 }
@@ -19,14 +19,30 @@ function handleOptions() {
     headers: {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Headers": "Content-Type, X-App-Password",
       "Access-Control-Max-Age": "86400",
     },
   });
 }
 
+function authenticate(request, env) {
+  if (request.method.toUpperCase() === "OPTIONS") {
+    return null;
+  }
+  const expectedPassword = env.APP_PASSWORD;
+  const providedPassword = request.headers.get("X-App-Password");
+
+  if (!expectedPassword || providedPassword !== expectedPassword) {
+    return jsonResponse({ error: "Unauthorized" }, 401);
+  }
+  return null;
+}
+
 export async function onRequestGet(context) {
-  const { env } = context;
+  const { request, env } = context;
+  const authError = authenticate(request, env);
+  if (authError) return authError;
+
   if (!env.DB) {
     return jsonResponse({ error: "D1 database binding 'DB' is missing." }, 500);
   }
@@ -44,6 +60,9 @@ export async function onRequestGet(context) {
 
 export async function onRequestPost(context) {
   const { request, env } = context;
+  const authError = authenticate(request, env);
+  if (authError) return authError;
+
   if (!env.DB) {
     return jsonResponse({ error: "D1 database binding 'DB' is missing." }, 500);
   }
@@ -87,6 +106,9 @@ export async function onRequestPost(context) {
 
 export async function onRequestPut(context) {
   const { request, env } = context;
+  const authError = authenticate(request, env);
+  if (authError) return authError;
+
   if (!env.DB) {
     return jsonResponse({ error: "D1 database binding 'DB' is missing." }, 500);
   }
@@ -144,6 +166,9 @@ export async function onRequestPut(context) {
 
 export async function onRequestDelete(context) {
   const { request, env } = context;
+  const authError = authenticate(request, env);
+  if (authError) return authError;
+
   if (!env.DB) {
     return jsonResponse({ error: "D1 database binding 'DB' is missing." }, 500);
   }
@@ -174,7 +199,11 @@ export async function onRequestDelete(context) {
 }
 
 export async function onRequest(context) {
-  switch (context.request.method.toUpperCase()) {
+  const { request, env } = context;
+  const authError = authenticate(request, env);
+  if (authError) return authError;
+
+  switch (request.method.toUpperCase()) {
     case "GET":
       return onRequestGet(context);
     case "POST":

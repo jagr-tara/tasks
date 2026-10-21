@@ -1,10 +1,11 @@
 // Single-Page Task Manager Logic
-// Interacts with Cloudflare Pages Function at /api/todos
+// Interacts with Cloudflare Pages Function at /api/todos with X-App-Password authentication
 
 (function () {
   'use strict';
 
   const API_ENDPOINT = '/api/todos';
+  const AUTH_STORAGE_KEY = 'app_password';
 
   // Application State
   const state = {
@@ -17,11 +18,23 @@
 
   // DOM Elements
   const elements = {
+    // Auth Elements
+    authOverlay: document.getElementById('authOverlay'),
+    authForm: document.getElementById('authForm'),
+    authPassword: document.getElementById('authPassword'),
+    authAlert: document.getElementById('authAlert'),
+    authSubmitBtn: document.getElementById('authSubmitBtn'),
+    authBtnText: document.querySelector('.auth-btn-text'),
+    authBtnSpinner: document.querySelector('#authSubmitBtn .btn-spinner'),
+    lockBtn: document.getElementById('lockBtn'),
+
+    // Main App Elements
+    appLayout: document.getElementById('appLayout'),
     form: document.getElementById('todoForm'),
     taskInput: document.getElementById('taskInput'),
     submitBtn: document.getElementById('submitBtn'),
-    btnText: document.querySelector('.btn-text'),
-    btnSpinner: document.querySelector('.btn-spinner'),
+    btnText: document.querySelector('#submitBtn .btn-text'),
+    btnSpinner: document.querySelector('#submitBtn .btn-spinner'),
     todoList: document.getElementById('todoList'),
     loadingSkeleton: document.getElementById('loadingSkeleton'),
     emptyState: document.getElementById('emptyState'),
@@ -39,14 +52,54 @@
     syncStatus: document.getElementById('syncStatus'),
   };
 
-  // Helper: Escape HTML to prevent XSS
-  function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+  // Auth Helpers
+  function getStoredPassword() {
+    return localStorage.getItem(AUTH_STORAGE_KEY) || '';
   }
 
-  // Helper: Format readable date
+  function setStoredPassword(password) {
+    localStorage.setItem(AUTH_STORAGE_KEY, password);
+  }
+
+  function clearStoredPassword() {
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+  }
+
+  function showAuthPrompt(errorMessage = '') {
+    elements.appLayout.classList.add('hidden');
+    elements.authOverlay.classList.remove('hidden');
+
+    if (errorMessage) {
+      elements.authAlert.textContent = errorMessage;
+      elements.authAlert.classList.remove('hidden');
+    } else {
+      elements.authAlert.classList.add('hidden');
+      elements.authAlert.textContent = '';
+    }
+
+    elements.authPassword.value = '';
+    setTimeout(() => elements.authPassword.focus(), 50);
+  }
+
+  function hideAuthPrompt() {
+    elements.authAlert.classList.add('hidden');
+    elements.authAlert.textContent = '';
+    elements.authOverlay.classList.add('hidden');
+    elements.appLayout.classList.remove('hidden');
+  }
+
+  function setAuthLoading(isLoading) {
+    elements.authSubmitBtn.disabled = isLoading;
+    if (isLoading) {
+      elements.authBtnText.classList.add('hidden');
+      elements.authBtnSpinner.classList.remove('hidden');
+    } else {
+      elements.authBtnText.classList.remove('hidden');
+      elements.authBtnSpinner.classList.add('hidden');
+    }
+  }
+
+  // Format readable date
   function formatDate(isoString) {
     if (!isoString) return '';
     try {
@@ -91,15 +144,26 @@
     }
   }
 
-  // API Call Wrapper
+  // API Call Wrapper with X-App-Password Header and 401 Interception
   async function apiRequest(url, options = {}) {
+    const password = getStoredPassword();
+
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(password ? { 'X-App-Password': password } : {}),
+      ...(options.headers || {}),
+    };
+
     const res = await fetch(url, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(options.headers || {}),
-      },
+      headers,
     });
+
+    if (res.status === 401) {
+      clearStoredPassword();
+      showAuthPrompt('Invalid or expired password. Please enter the correct password.');
+      throw new Error('Unauthorized');
+    }
 
     const data = await res.json().catch(() => ({}));
 
@@ -123,7 +187,9 @@
       state.todos = Array.isArray(data.todos) ? data.todos : [];
       hideBanner();
     } catch (error) {
-      showBanner(`Failed to load tasks: ${error.message}`);
+      if (error.message !== 'Unauthorized') {
+        showBanner(`Failed to load tasks: ${error.message}`);
+      }
     } finally {
       state.isLoading = false;
       elements.loadingSkeleton.classList.add('hidden');
@@ -156,7 +222,9 @@
       hideBanner();
       render();
     } catch (error) {
-      showBanner(`Could not add task: ${error.message}`);
+      if (error.message !== 'Unauthorized') {
+        showBanner(`Could not add task: ${error.message}`);
+      }
     } finally {
       state.isSubmitting = false;
       elements.submitBtn.disabled = false;
@@ -183,8 +251,10 @@
       state.todos = state.todos.map((t) => (t.id === id ? { ...t, ...updated } : t));
       render();
     } catch (error) {
-      showBanner(`Could not update task status: ${error.message}`);
-      itemEl.classList.remove('is-busy');
+      if (error.message !== 'Unauthorized') {
+        showBanner(`Could not update task status: ${error.message}`);
+        itemEl.classList.remove('is-busy');
+      }
     } finally {
       setSyncing(false);
     }
@@ -209,7 +279,9 @@
       const updated = data.todo;
       state.todos = state.todos.map((t) => (t.id === id ? { ...t, ...updated } : t));
     } catch (error) {
-      showBanner(`Could not rename task: ${error.message}`);
+      if (error.message !== 'Unauthorized') {
+        showBanner(`Could not rename task: ${error.message}`);
+      }
     } finally {
       state.editingId = null;
       setSyncing(false);
@@ -230,8 +302,10 @@
       state.todos = state.todos.filter((t) => t.id !== id);
       render();
     } catch (error) {
-      showBanner(`Could not delete task: ${error.message}`);
-      itemEl.classList.remove('is-busy');
+      if (error.message !== 'Unauthorized') {
+        showBanner(`Could not delete task: ${error.message}`);
+        itemEl.classList.remove('is-busy');
+      }
     } finally {
       setSyncing(false);
     }
@@ -254,7 +328,9 @@
       state.todos = state.todos.filter((t) => !t.completed);
       render();
     } catch (error) {
-      showBanner(`Failed while clearing completed tasks: ${error.message}`);
+      if (error.message !== 'Unauthorized') {
+        showBanner(`Failed while clearing completed tasks: ${error.message}`);
+      }
     } finally {
       setSyncing(false);
     }
@@ -427,7 +503,35 @@
     });
   }
 
+  // Auth Form Submit Handler
+  async function handleAuthSubmit(event) {
+    event.preventDefault();
+    const enteredPassword = elements.authPassword.value.trim();
+    if (!enteredPassword) return;
+
+    setAuthLoading(true);
+    setStoredPassword(enteredPassword);
+
+    try {
+      await fetchTodos();
+      hideAuthPrompt();
+    } catch {
+      // 401 already triggered clearStoredPassword & showAuthPrompt
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  // Lock Session Handler
+  function handleLockSession() {
+    clearStoredPassword();
+    state.todos = [];
+    showAuthPrompt();
+  }
+
   // Event Listeners
+  elements.authForm.addEventListener('submit', handleAuthSubmit);
+  elements.lockBtn.addEventListener('click', handleLockSession);
   elements.form.addEventListener('submit', handleAddTodo);
   elements.clearCompletedBtn.addEventListener('click', handleClearCompleted);
   elements.bannerClose.addEventListener('click', hideBanner);
@@ -436,6 +540,16 @@
     tab.addEventListener('click', () => setFilter(tab.dataset.filter));
   });
 
-  // Initialization
-  document.addEventListener('DOMContentLoaded', fetchTodos);
+  // App Initialization
+  function initializeApp() {
+    const savedPassword = getStoredPassword();
+    if (!savedPassword) {
+      showAuthPrompt();
+    } else {
+      hideAuthPrompt();
+      fetchTodos();
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', initializeApp);
 })();

@@ -11,7 +11,44 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-layout">
+  <!-- Authentication Overlay -->
+  <div id="authOverlay" class="auth-overlay hidden">
+    <div class="auth-card card" role="dialog" aria-labelledby="authTitle" aria-modal="true">
+      <div class="auth-header">
+        <div class="auth-icon" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </div>
+        <h2 id="authTitle" class="auth-title">Authentication Required</h2>
+        <p class="auth-subtitle">Enter your application password to view and manage tasks.</p>
+      </div>
+
+      <div id="authAlert" class="auth-alert hidden" role="alert" aria-live="assertive"></div>
+
+      <form id="authForm" class="auth-form">
+        <div class="form-field">
+          <label for="authPassword" class="sr-only">Application Password</label>
+          <input
+            type="password"
+            id="authPassword"
+            class="input-field"
+            placeholder="Enter application password"
+            autocomplete="current-password"
+            required
+          />
+        </div>
+        <button type="submit" id="authSubmitBtn" class="btn btn-primary auth-submit-btn">
+          <span class="auth-btn-text">Unlock Application</span>
+          <span class="btn-spinner hidden" aria-hidden="true"></span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main Application Layout -->
+  <div id="appLayout" class="app-layout hidden">
     <header class="app-header">
       <div class="brand">
         <div class="brand-icon" aria-hidden="true">
@@ -24,9 +61,17 @@
           <p class="brand-subtitle">Cloudflare Pages &amp; D1 Database</p>
         </div>
       </div>
-      <div id="connectionStatus" class="status-indicator" title="Connection status">
-        <span class="status-dot"></span>
-        <span class="status-label">Ready</span>
+      <div class="header-actions">
+        <div id="connectionStatus" class="status-indicator" title="Connection status">
+          <span class="status-dot"></span>
+          <span class="status-label">Ready</span>
+        </div>
+        <button type="button" id="lockBtn" class="icon-btn lock-btn" title="Lock session" aria-label="Lock application session">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </button>
       </div>
     </header>
 

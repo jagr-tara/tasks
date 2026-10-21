@@ -1,0 +1,2 @@
+# Cloudflare Pages local development environment variables
+APP_PASSWORD=your_secure_password
