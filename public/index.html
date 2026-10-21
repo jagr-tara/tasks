@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="A clean, responsive single-page task manager powered by Cloudflare Pages and D1." />
+  <title>Tasks - Cloudflare D1 Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-layout">
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1 class="brand-title">Tasks</h1>
+          <p class="brand-subtitle">Cloudflare Pages &amp; D1 Database</p>
+        </div>
+      </div>
+      <div id="connectionStatus" class="status-indicator" title="Connection status">
+        <span class="status-dot"></span>
+        <span class="status-label">Ready</span>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <section class="card" aria-label="Task Management">
+        <!-- Notification Area -->
+        <div id="banner" class="banner hidden" role="alert" aria-live="polite">
+          <span id="bannerMessage" class="banner-message"></span>
+          <button id="bannerClose" class="banner-close" aria-label="Dismiss notification">&times;</button>
+        </div>
+
+        <!-- Add Task Form -->
+        <form id="todoForm" class="todo-form">
+          <label for="taskInput" class="sr-only">New task title</label>
+          <input
+            type="text"
+            id="taskInput"
+            class="input-field"
+            placeholder="What needs to be done?"
+            maxlength="255"
+            autocomplete="off"
+            required
+          />
+          <button type="submit" id="submitBtn" class="btn btn-primary">
+            <span class="btn-text">Add Task</span>
+            <span class="btn-spinner hidden" aria-hidden="true"></span>
+          </button>
+        </form>
+
+        <!-- Filter Controls -->
+        <div class="controls-bar">
+          <div class="filter-group" role="tablist" aria-label="Task Filters">
+            <button type="button" class="filter-tab active" data-filter="all" role="tab" aria-selected="true">
+              All <span class="counter" id="countAll">0</span>
+            </button>
+            <button type="button" class="filter-tab" data-filter="active" role="tab" aria-selected="false">
+              Active <span class="counter" id="countActive">0</span>
+            </button>
+            <button type="button" class="filter-tab" data-filter="completed" role="tab" aria-selected="false">
+              Completed <span class="counter" id="countCompleted">0</span>
+            </button>
+          </div>
+
+          <button type="button" id="clearCompletedBtn" class="btn btn-ghost" disabled>
+            Clear completed
+          </button>
+        </div>
+
+        <!-- Skeleton Loading State -->
+        <div id="loadingSkeleton" class="skeleton-list" aria-hidden="true">
+          <div class="skeleton-item"><div class="skeleton-box"></div><div class="skeleton-line"></div></div>
+          <div class="skeleton-item"><div class="skeleton-box"></div><div class="skeleton-line short"></div></div>
+          <div class="skeleton-item"><div class="skeleton-box"></div><div class="skeleton-line medium"></div></div>
+        </div>
+
+        <!-- Task List -->
+        <ul id="todoList" class="todo-list hidden" aria-label="Task list"></ul>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="empty-state hidden">
+          <div class="empty-icon" aria-hidden="true">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+          </div>
+          <p id="emptyMessage" class="empty-text">No tasks yet. Add your first task above.</p>
+        </div>
+
+        <!-- Card Footer -->
+        <div class="card-footer">
+          <span id="itemsLeft" class="items-left">0 tasks remaining</span>
+          <span class="sync-status" id="syncStatus">Up to date</span>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>Powered by Cloudflare Pages Functions &bull; Cloudflare D1</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
