@@ -1206,8 +1206,37 @@ html:not(.is-authenticated) #appLayout {
   background-color: var(--color-dark-hover);
 }
 
-.btn-sm-action:active {
-  transform: scale(0.96);
+.projects-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.btn-sm-outline {
+  background-color: transparent;
+  color: var(--color-dark);
+  border: 1px solid var(--color-pill-track);
+  border-radius: var(--radius-full);
+  padding: 5px 12px;
+  font-family: inherit;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-sm-outline:hover {
+  border-color: var(--color-dark);
+  background-color: var(--color-subtle-box);
+}
+
+.btn-sm-outline.is-active {
+  background-color: var(--color-dark);
+  color: #FFFFFF;
+  border-color: var(--color-dark);
 }
 
 .project-form-card {
@@ -1393,6 +1422,91 @@ html:not(.is-authenticated) #appLayout {
 
 .icon-btn-xs.delete-subproj-btn:hover {
   color: var(--color-error);
+}
+
+/* Reorder Controls */
+.reorder-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-right: var(--space-4);
+}
+
+.btn-reorder {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-pill-track);
+  background: var(--color-subtle-box);
+  color: var(--color-dark);
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-reorder:hover:not(:disabled) {
+  background: var(--color-dark);
+  color: #FFFFFF;
+  border-color: var(--color-dark);
+}
+
+.btn-reorder:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+/* Group Headers in Performance & Settings */
+.project-group-header,
+.settings-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-8) 0 var(--space-4);
+  border-bottom: 1px solid var(--color-pill-track);
+  margin-top: var(--space-8);
+}
+
+.project-group-header:first-child,
+.settings-group-header:first-child {
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.project-group-title,
+.settings-group-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.project-group-count {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+/* Tasks Page Group Clusters */
+.chips-group-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: 2px 0;
+}
+
+.chips-group-tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-muted);
+  padding: 0 4px 0 2px;
 }
 
 .preferences-card {

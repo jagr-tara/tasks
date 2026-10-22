@@ -10,21 +10,24 @@
   const LOCAL_CACHE_KEY = 'offline_todos_cache';
   const PROJECTS_STORAGE_KEY = 'app_custom_projects';
 
-  // Default Projects Preset (Text only with sub-projects)
+  // Default Projects Preset (Text only with sub-projects and groups)
   const DEFAULT_PROJECTS = [
     {
       id: 'proj-1',
       name: 'Decision making',
+      group: 'Management',
       subprojects: ['Roadmap', 'Strategy'],
     },
     {
       id: 'proj-2',
       name: 'Design system',
+      group: 'Product',
       subprojects: ['Components', 'Typography'],
     },
     {
       id: 'proj-3',
       name: 'Exploration phase',
+      group: 'Product',
       subprojects: ['Prototypes'],
     },
   ];
@@ -43,6 +46,7 @@
     expandedProjects: new Set(),
     activePeriod: 'week', // 'week' | 'month' | 'year'
     bannerTimeout: null,
+    isReordering: false,
   };
 
   // DOM Elements
@@ -101,6 +105,7 @@
 
     // Slide 2: Settings Elements
     openAddProjectBtn: document.getElementById('openAddProjectBtn'),
+    toggleReorderBtn: document.getElementById('toggleReorderBtn'),
     projectFormCard: document.getElementById('projectFormCard'),
     projectFormTitle: document.getElementById('projectFormTitle'),
     projectForm: document.getElementById('projectForm'),
@@ -109,6 +114,9 @@
     editSubprojectName: document.getElementById('editSubprojectName'),
     projectNameLabel: document.getElementById('projectNameLabel'),
     projectNameInput: document.getElementById('projectNameInput'),
+    projectGroupFieldGroup: document.getElementById('projectGroupFieldGroup'),
+    projectGroupInput: document.getElementById('projectGroupInput'),
+    groupSuggestionsList: document.getElementById('groupSuggestionsList'),
     cancelProjectBtn: document.getElementById('cancelProjectBtn'),
     settingsProjectsList: document.getElementById('settingsProjectsList'),
 
@@ -130,6 +138,7 @@
           return parsed.map((p, idx) => ({
             id: p.id || `proj-${idx + 1}`,
             name: p.name,
+            group: (p.group || 'General').trim(),
             subprojects: Array.isArray(p.subprojects) ? p.subprojects : [],
           }));
         }
@@ -146,6 +155,83 @@
     } catch {
       // ignore
     }
+  }
+
+  function getUniqueGroups() {
+    const groups = [];
+    state.projects.forEach((p) => {
+      const g = (p.group || 'General').trim();
+      if (!groups.includes(g)) groups.push(g);
+    });
+    return groups.length > 0 ? groups : ['General'];
+  }
+
+  function getGroupedProjects() {
+    const groups = getUniqueGroups();
+    return groups.map((group) => ({
+      group,
+      projects: state.projects.filter((p) => (p.group || 'General').trim().toLowerCase() === group.toLowerCase()),
+    })).filter((g) => g.projects.length > 0);
+  }
+
+  function moveGroup(groupName, delta) {
+    const groups = getUniqueGroups();
+    const currIdx = groups.indexOf(groupName);
+    const targetIdx = currIdx + delta;
+    if (targetIdx < 0 || targetIdx >= groups.length) return;
+    const targetGroup = groups[targetIdx];
+
+    const newGroups = [...groups];
+    newGroups[currIdx] = targetGroup;
+    newGroups[targetIdx] = groupName;
+
+    const reordered = [];
+    newGroups.forEach((g) => {
+      state.projects.filter((p) => (p.group || 'General').trim().toLowerCase() === g.toLowerCase()).forEach((p) => reordered.push(p));
+    });
+    state.projects.forEach((p) => {
+      if (!reordered.includes(p)) reordered.push(p);
+    });
+    state.projects = reordered;
+    saveStoredProjects();
+    renderProjectsUI();
+    render();
+  }
+
+  function moveProjectInGroup(projId, delta) {
+    const proj = state.projects.find((p) => p.id === projId);
+    if (!proj) return;
+    const group = (proj.group || 'General').trim().toLowerCase();
+    const groupProjects = state.projects.filter((p) => (p.group || 'General').trim().toLowerCase() === group);
+    const currIdxInGroup = groupProjects.findIndex((p) => p.id === projId);
+    const targetIdxInGroup = currIdxInGroup + delta;
+    if (targetIdxInGroup < 0 || targetIdxInGroup >= groupProjects.length) return;
+
+    const otherProj = groupProjects[targetIdxInGroup];
+    const indexA = state.projects.findIndex((p) => p.id === projId);
+    const indexB = state.projects.findIndex((p) => p.id === otherProj.id);
+    if (indexA === -1 || indexB === -1) return;
+
+    const temp = state.projects[indexA];
+    state.projects[indexA] = state.projects[indexB];
+    state.projects[indexB] = temp;
+
+    saveStoredProjects();
+    renderProjectsUI();
+    render();
+  }
+
+  function moveSubproject(parentProjId, subIndex, delta) {
+    const parent = state.projects.find((p) => p.id === parentProjId);
+    if (!parent || !Array.isArray(parent.subprojects)) return;
+    const target = subIndex + delta;
+    if (target < 0 || target >= parent.subprojects.length) return;
+    const temp = parent.subprojects[subIndex];
+    parent.subprojects[subIndex] = parent.subprojects[target];
+    parent.subprojects[target] = temp;
+    saveStoredProjects();
+    renderProjectsUI();
+    render();
   }
 
   function getProjectByName(name) {
@@ -690,26 +776,56 @@
       state.selectedSubproject = null;
     }
 
-    // 1. Render Category Chips on Tasks Page (Text only, wraps into new row)
+    // Populate Group Suggestions Datalist in Settings Form
+    if (elements.groupSuggestionsList) {
+      const uniqueGroups = getUniqueGroups();
+      elements.groupSuggestionsList.innerHTML = uniqueGroups
+        .map((g) => `<option value="${escapeHtml(g)}">`)
+        .join('');
+    }
+
+    // Update Reorder Toggle Button State
+    if (elements.toggleReorderBtn) {
+      elements.toggleReorderBtn.classList.toggle('is-active', state.isReordering);
+      elements.toggleReorderBtn.textContent = state.isReordering ? '✓ Done' : '⇅ Reorder';
+    }
+
+    // 1. Render Category Chips on Tasks Page (Grouped cleanly into cluster rows)
     if (elements.taskCategoryChipsRow) {
       elements.taskCategoryChipsRow.innerHTML = '<span class="category-label">Project:</span>';
-      state.projects.forEach((proj) => {
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        const isSelected = proj.name === state.selectedCategory;
-        chip.className = `category-chip ${isSelected ? 'active' : ''}`;
-        chip.dataset.category = proj.name;
-        chip.setAttribute('role', 'radio');
-        chip.setAttribute('aria-checked', isSelected ? 'true' : 'false');
-        chip.textContent = proj.name;
+      const grouped = getGroupedProjects();
 
-        chip.addEventListener('click', () => {
-          state.selectedCategory = proj.name;
-          state.selectedSubproject = null;
-          renderProjectsUI();
+      grouped.forEach(({ group, projects }) => {
+        const cluster = document.createElement('div');
+        cluster.className = 'chips-group-cluster';
+
+        if (grouped.length > 1) {
+          const groupTag = document.createElement('span');
+          groupTag.className = 'chips-group-tag';
+          groupTag.textContent = group;
+          cluster.appendChild(groupTag);
+        }
+
+        projects.forEach((proj) => {
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          const isSelected = proj.name === state.selectedCategory;
+          chip.className = `category-chip ${isSelected ? 'active' : ''}`;
+          chip.dataset.category = proj.name;
+          chip.setAttribute('role', 'radio');
+          chip.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+          chip.textContent = proj.name;
+
+          chip.addEventListener('click', () => {
+            state.selectedCategory = proj.name;
+            state.selectedSubproject = null;
+            renderProjectsUI();
+          });
+
+          cluster.appendChild(chip);
         });
 
-        elements.taskCategoryChipsRow.appendChild(chip);
+        elements.taskCategoryChipsRow.appendChild(cluster);
       });
     }
 
@@ -750,105 +866,184 @@
       }
     }
 
-    // 2. Render Projects & Sub-projects List on Settings Page
+    // 2. Render Projects & Sub-projects List on Settings Page (Sorted by Group with custom Reorder controls)
     if (elements.settingsProjectsList) {
       elements.settingsProjectsList.innerHTML = '';
-      state.projects.forEach((proj) => {
-        const projTasks = state.todos.filter((t) => parseTask(t).category.toLowerCase() === proj.name.toLowerCase());
-        const projCompleted = projTasks.filter((t) => Boolean(t.completed)).length;
-        const subprojects = Array.isArray(proj.subprojects) ? proj.subprojects : [];
+      const grouped = getGroupedProjects();
+      const allGroups = getUniqueGroups();
 
-        const item = document.createElement('div');
-        item.className = 'project-manage-item';
-        item.dataset.id = proj.id;
+      grouped.forEach(({ group, projects }) => {
+        // Group Header
+        const groupHeader = document.createElement('div');
+        groupHeader.className = 'settings-group-header';
 
-        // Parent project header
-        const headerEl = document.createElement('div');
-        headerEl.className = 'proj-manage-header';
-        headerEl.innerHTML = `
-          <div class="proj-manage-left">
-            <div class="proj-manage-name">${escapeHtml(proj.name)}</div>
-            <div class="project-pct">${projTasks.length} task${projTasks.length === 1 ? '' : 's'} (${projCompleted} done)</div>
+        const groupIdx = allGroups.indexOf(group);
+        const canMoveGroupUp = groupIdx > 0;
+        const canMoveGroupDown = groupIdx < allGroups.length - 1;
+
+        groupHeader.innerHTML = `
+          <div class="settings-group-title">
+            <span>${escapeHtml(group)}</span>
+            <span class="project-group-count">(${projects.length})</span>
           </div>
-          <div class="proj-manage-actions">
-            <button type="button" class="btn-xs-action add-subproj-btn" title="Add sub-project to ${escapeHtml(proj.name)}">+ Sub</button>
-            <button type="button" class="icon-btn edit-proj-btn" aria-label="Edit project ${escapeHtml(proj.name)}">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-              </svg>
-            </button>
-            <button type="button" class="icon-btn icon-btn-delete delete-proj-btn" aria-label="Delete project ${escapeHtml(proj.name)}">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="3 6 5 6 21 6"></polyline>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-              </svg>
-            </button>
-          </div>
+          ${
+            state.isReordering && allGroups.length > 1
+              ? `
+              <div class="reorder-btn-group">
+                <button type="button" class="btn-reorder move-group-up" title="Move group above" ${canMoveGroupUp ? '' : 'disabled'}>▲</button>
+                <button type="button" class="btn-reorder move-group-down" title="Move group below" ${canMoveGroupDown ? '' : 'disabled'}>▼</button>
+              </div>
+              `
+              : ''
+          }
         `;
 
-        headerEl.querySelector('.add-subproj-btn').addEventListener('click', () => {
-          openEditProjectForm(null, proj, null);
-        });
-
-        headerEl.querySelector('.edit-proj-btn').addEventListener('click', () => {
-          openEditProjectForm(proj, null, null);
-        });
-
-        headerEl.querySelector('.delete-proj-btn').addEventListener('click', () => {
-          handleDeleteProject(proj.id);
-        });
-
-        item.appendChild(headerEl);
-
-        // Sub-projects list under parent project
-        if (subprojects.length > 0) {
-          const subListEl = document.createElement('div');
-          subListEl.className = 'subprojects-manage-list';
-
-          subprojects.forEach((subName) => {
-            const subTasks = projTasks.filter((t) => (parseTask(t).subproject || '').toLowerCase() === subName.toLowerCase());
-            const subDone = subTasks.filter((t) => Boolean(t.completed)).length;
-
-            const subItem = document.createElement('div');
-            subItem.className = 'subproject-manage-item';
-            subItem.innerHTML = `
-              <div class="subproj-manage-left">
-                <span class="subproj-branch-symbol">↳</span>
-                <span class="subproj-manage-name">${escapeHtml(subName)}</span>
-                <span class="subproj-count-badge">(${subDone}/${subTasks.length})</span>
-              </div>
-              <div class="proj-manage-actions">
-                <button type="button" class="icon-btn-xs edit-subproj-btn" title="Edit sub-project ${escapeHtml(subName)}">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                  </svg>
-                </button>
-                <button type="button" class="icon-btn-xs delete-subproj-btn" title="Delete sub-project ${escapeHtml(subName)}">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="3 6 5 6 21 6"></polyline>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                  </svg>
-                </button>
-              </div>
-            `;
-
-            subItem.querySelector('.edit-subproj-btn').addEventListener('click', () => {
-              openEditProjectForm(null, proj, subName);
-            });
-
-            subItem.querySelector('.delete-subproj-btn').addEventListener('click', () => {
-              handleDeleteSubproject(proj.id, subName);
-            });
-
-            subListEl.appendChild(subItem);
-          });
-
-          item.appendChild(subListEl);
+        if (state.isReordering && allGroups.length > 1) {
+          const upBtn = groupHeader.querySelector('.move-group-up');
+          const downBtn = groupHeader.querySelector('.move-group-down');
+          if (upBtn) upBtn.addEventListener('click', () => moveGroup(group, -1));
+          if (downBtn) downBtn.addEventListener('click', () => moveGroup(group, 1));
         }
 
-        elements.settingsProjectsList.appendChild(item);
+        elements.settingsProjectsList.appendChild(groupHeader);
+
+        // Projects under this group
+        projects.forEach((proj, pIdx) => {
+          const projTasks = state.todos.filter((t) => parseTask(t).category.toLowerCase() === proj.name.toLowerCase());
+          const projCompleted = projTasks.filter((t) => Boolean(t.completed)).length;
+          const subprojects = Array.isArray(proj.subprojects) ? proj.subprojects : [];
+
+          const item = document.createElement('div');
+          item.className = 'project-manage-item';
+          item.dataset.id = proj.id;
+
+          const canMoveProjUp = pIdx > 0;
+          const canMoveProjDown = pIdx < projects.length - 1;
+
+          // Parent project header
+          const headerEl = document.createElement('div');
+          headerEl.className = 'proj-manage-header';
+          headerEl.innerHTML = `
+            <div class="proj-manage-left">
+              <div class="proj-manage-name">${escapeHtml(proj.name)}</div>
+              <div class="project-pct">${projTasks.length} task${projTasks.length === 1 ? '' : 's'} (${projCompleted} done)</div>
+            </div>
+            <div class="proj-manage-actions">
+              ${
+                state.isReordering
+                  ? `
+                  <div class="reorder-btn-group">
+                    <button type="button" class="btn-reorder move-proj-up" title="Move project above" ${canMoveProjUp ? '' : 'disabled'}>▲</button>
+                    <button type="button" class="btn-reorder move-proj-down" title="Move project below" ${canMoveProjDown ? '' : 'disabled'}>▼</button>
+                  </div>
+                  `
+                  : ''
+              }
+              <button type="button" class="btn-xs-action add-subproj-btn" title="Add sub-project to ${escapeHtml(proj.name)}">+ Sub</button>
+              <button type="button" class="icon-btn edit-proj-btn" aria-label="Edit project ${escapeHtml(proj.name)}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                </svg>
+              </button>
+              <button type="button" class="icon-btn icon-btn-delete delete-proj-btn" aria-label="Delete project ${escapeHtml(proj.name)}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+              </button>
+            </div>
+          `;
+
+          if (state.isReordering) {
+            const upBtn = headerEl.querySelector('.move-proj-up');
+            const downBtn = headerEl.querySelector('.move-proj-down');
+            if (upBtn) upBtn.addEventListener('click', () => moveProjectInGroup(proj.id, -1));
+            if (downBtn) downBtn.addEventListener('click', () => moveProjectInGroup(proj.id, 1));
+          }
+
+          headerEl.querySelector('.add-subproj-btn').addEventListener('click', () => {
+            openEditProjectForm(null, proj, null);
+          });
+
+          headerEl.querySelector('.edit-proj-btn').addEventListener('click', () => {
+            openEditProjectForm(proj, null, null);
+          });
+
+          headerEl.querySelector('.delete-proj-btn').addEventListener('click', () => {
+            handleDeleteProject(proj.id);
+          });
+
+          item.appendChild(headerEl);
+
+          // Sub-projects list under parent project
+          if (subprojects.length > 0) {
+            const subListEl = document.createElement('div');
+            subListEl.className = 'subprojects-manage-list';
+
+            subprojects.forEach((subName, sIdx) => {
+              const subTasks = projTasks.filter((t) => (parseTask(t).subproject || '').toLowerCase() === subName.toLowerCase());
+              const subDone = subTasks.filter((t) => Boolean(t.completed)).length;
+              const canMoveSubUp = sIdx > 0;
+              const canMoveSubDown = sIdx < subprojects.length - 1;
+
+              const subItem = document.createElement('div');
+              subItem.className = 'subproject-manage-item';
+              subItem.innerHTML = `
+                <div class="subproj-manage-left">
+                  <span class="subproj-branch-symbol">↳</span>
+                  <span class="subproj-manage-name">${escapeHtml(subName)}</span>
+                  <span class="subproj-count-badge">(${subDone}/${subTasks.length})</span>
+                </div>
+                <div class="proj-manage-actions">
+                  ${
+                    state.isReordering && subprojects.length > 1
+                      ? `
+                      <div class="reorder-btn-group">
+                        <button type="button" class="btn-reorder move-sub-up" title="Move sub-project above" ${canMoveSubUp ? '' : 'disabled'}>▲</button>
+                        <button type="button" class="btn-reorder move-sub-down" title="Move sub-project below" ${canMoveSubDown ? '' : 'disabled'}>▼</button>
+                      </div>
+                      `
+                      : ''
+                  }
+                  <button type="button" class="icon-btn-xs edit-subproj-btn" title="Edit sub-project ${escapeHtml(subName)}">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                    </svg>
+                  </button>
+                  <button type="button" class="icon-btn-xs delete-subproj-btn" title="Delete sub-project ${escapeHtml(subName)}">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="3 6 5 6 21 6"></polyline>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                  </button>
+                </div>
+              `;
+
+              if (state.isReordering && subprojects.length > 1) {
+                const subUp = subItem.querySelector('.move-sub-up');
+                const subDown = subItem.querySelector('.move-sub-down');
+                if (subUp) subUp.addEventListener('click', () => moveSubproject(proj.id, sIdx, -1));
+                if (subDown) subDown.addEventListener('click', () => moveSubproject(proj.id, sIdx, 1));
+              }
+
+              subItem.querySelector('.edit-subproj-btn').addEventListener('click', () => {
+                openEditProjectForm(null, proj, subName);
+              });
+
+              subItem.querySelector('.delete-subproj-btn').addEventListener('click', () => {
+                handleDeleteSubproject(proj.id, subName);
+              });
+
+              subListEl.appendChild(subItem);
+            });
+
+            item.appendChild(subListEl);
+          }
+
+          elements.settingsProjectsList.appendChild(item);
+        });
       });
     }
 
@@ -870,6 +1065,7 @@
       elements.projectFormTitle.textContent = subName ? 'Edit Sub-project' : `Add Sub-project to "${parentProj.name}"`;
       elements.projectNameInput.placeholder = 'e.g. Components';
       elements.projectNameInput.value = subName || '';
+      if (elements.projectGroupFieldGroup) elements.projectGroupFieldGroup.classList.add('hidden');
     } else if (proj) {
       // Edit Parent Project
       elements.editProjectId.value = proj.id;
@@ -879,6 +1075,8 @@
       elements.projectFormTitle.textContent = 'Edit Project';
       elements.projectNameInput.placeholder = 'e.g. Mobile Architecture';
       elements.projectNameInput.value = proj.name;
+      if (elements.projectGroupFieldGroup) elements.projectGroupFieldGroup.classList.remove('hidden');
+      if (elements.projectGroupInput) elements.projectGroupInput.value = proj.group || 'General';
     } else {
       // New Parent Project
       elements.editProjectId.value = '';
@@ -888,6 +1086,8 @@
       elements.projectFormTitle.textContent = 'New Project';
       elements.projectNameInput.placeholder = 'e.g. Mobile Architecture';
       elements.projectNameInput.value = '';
+      if (elements.projectGroupFieldGroup) elements.projectGroupFieldGroup.classList.remove('hidden');
+      if (elements.projectGroupInput) elements.projectGroupInput.value = '';
     }
 
     elements.projectNameInput.focus();
@@ -901,6 +1101,7 @@
     elements.editParentProjectId.value = '';
     elements.editSubprojectName.value = '';
     elements.projectNameInput.value = '';
+    if (elements.projectGroupInput) elements.projectGroupInput.value = '';
   }
 
   function handleSaveProject(event) {
@@ -909,6 +1110,7 @@
     const editId = elements.editProjectId.value;
     const parentProjId = elements.editParentProjectId.value;
     const editSubName = elements.editSubprojectName.value;
+    const group = (elements.projectGroupInput ? elements.projectGroupInput.value.trim() : '') || 'General';
 
     if (!name) return;
 
@@ -944,6 +1146,7 @@
       if (existing) {
         const oldName = existing.name;
         existing.name = name;
+        existing.group = group;
 
         // Update existing task titles to match new project name
         state.todos = state.todos.map((t) => {
@@ -966,6 +1169,7 @@
       state.projects.push({
         id: `proj-${Date.now()}`,
         name,
+        group,
         subprojects: [],
       });
       state.selectedCategory = name;
@@ -1047,129 +1251,143 @@
       elements.avgDailyFocusValue.textContent = `${overallPct}%`;
     }
 
-    // Main parent projects list with expandable subproject progress
+    // Main parent projects list grouped by Group with expandable subproject progress
     if (!elements.projectItemsList) return;
     elements.projectItemsList.innerHTML = '';
 
-    state.projects.forEach((proj) => {
-      const projectTasks = state.todos.filter((t) => parseTask(t).category.toLowerCase() === proj.name.toLowerCase());
-      const projTotal = projectTasks.length;
-      const projCompleted = projectTasks.filter((t) => Boolean(t.completed)).length;
-      const projPct = projTotal > 0 ? Math.round((projCompleted / projTotal) * 100) : 0;
-
-      const subprojects = Array.isArray(proj.subprojects) ? proj.subprojects : [];
-      const hasSubprojects = subprojects.length > 0;
-      const isExpanded = state.expandedProjects.has(proj.id);
-
-      const wrapper = document.createElement('div');
-      wrapper.className = 'project-row-item-wrapper';
-      wrapper.dataset.projectId = proj.id;
-
-      // Parent row
-      const row = document.createElement('div');
-      row.className = 'project-row-item';
-      row.dataset.project = proj.name;
-      row.innerHTML = `
-        <div class="project-body-col">
-          <div class="project-name-row">
-            <span class="project-name">${escapeHtml(proj.name)}</span>
-            ${hasSubprojects ? `<button type="button" class="subproject-toggle-btn ${isExpanded ? 'is-active' : ''}" aria-expanded="${isExpanded ? 'true' : 'false'}">Breakdown <span class="toggle-icon">${isExpanded ? '▲' : '▼'}</span></button>` : ''}
-          </div>
-          <div class="progress-track">
-            <div class="progress-fill" style="width: ${projPct}%;"></div>
-          </div>
-        </div>
-        <div class="project-stats-col">
-          <span class="project-count-stat">${projCompleted} of ${projTotal} done</span>
-          <span class="project-pct">${projPct}%</span>
-        </div>
-      `;
-
-      row.querySelector('.project-name').addEventListener('click', () => {
-        state.selectedCategory = proj.name;
-        state.selectedSubproject = null;
-        goToSlide(1);
-      });
-
-      if (hasSubprojects) {
-        const toggleBtn = row.querySelector('.subproject-toggle-btn');
-        if (toggleBtn) {
-          toggleBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (state.expandedProjects.has(proj.id)) {
-              state.expandedProjects.delete(proj.id);
-            } else {
-              state.expandedProjects.add(proj.id);
-            }
-            renderPerformanceMetrics();
-          });
-        }
+    const grouped = getGroupedProjects();
+    grouped.forEach(({ group, projects }) => {
+      // Group Header
+      if (grouped.length > 1) {
+        const groupHeader = document.createElement('div');
+        groupHeader.className = 'project-group-header';
+        groupHeader.innerHTML = `
+          <span class="project-group-title">${escapeHtml(group)}</span>
+          <span class="project-group-count">${projects.length} project${projects.length === 1 ? '' : 's'}</span>
+        `;
+        elements.projectItemsList.appendChild(groupHeader);
       }
 
-      wrapper.appendChild(row);
+      projects.forEach((proj) => {
+        const projectTasks = state.todos.filter((t) => parseTask(t).category.toLowerCase() === proj.name.toLowerCase());
+        const projTotal = projectTasks.length;
+        const projCompleted = projectTasks.filter((t) => Boolean(t.completed)).length;
+        const projPct = projTotal > 0 ? Math.round((projCompleted / projTotal) * 100) : 0;
 
-      // Expandable Sub-projects breakdown
-      if (hasSubprojects && isExpanded) {
-        const breakdownEl = document.createElement('div');
-        breakdownEl.className = 'subproject-breakdown-container';
+        const subprojects = Array.isArray(proj.subprojects) ? proj.subprojects : [];
+        const hasSubprojects = subprojects.length > 0;
+        const isExpanded = state.expandedProjects.has(proj.id);
 
-        subprojects.forEach((subName) => {
-          const subTasks = projectTasks.filter((t) => (parseTask(t).subproject || '').toLowerCase() === subName.toLowerCase());
-          const subTotal = subTasks.length;
-          const subDone = subTasks.filter((t) => Boolean(t.completed)).length;
-          const subPct = subTotal > 0 ? Math.round((subDone / subTotal) * 100) : 0;
+        const wrapper = document.createElement('div');
+        wrapper.className = 'project-row-item-wrapper';
+        wrapper.dataset.projectId = proj.id;
 
-          const subItem = document.createElement('div');
-          subItem.className = 'subproject-breakdown-item';
-          subItem.innerHTML = `
-            <div class="subproj-breakdown-body">
-              <span class="subproj-breakdown-name">
-                <span class="subproj-branch-symbol">↳</span> ${escapeHtml(subName)}
-              </span>
-              <div class="progress-track-mini">
-                <div class="progress-fill-mini" style="width: ${subPct}%;"></div>
-              </div>
+        // Parent row
+        const row = document.createElement('div');
+        row.className = 'project-row-item';
+        row.dataset.project = proj.name;
+        row.innerHTML = `
+          <div class="project-body-col">
+            <div class="project-name-row">
+              <span class="project-name">${escapeHtml(proj.name)}</span>
+              ${hasSubprojects ? `<button type="button" class="subproject-toggle-btn ${isExpanded ? 'is-active' : ''}" aria-expanded="${isExpanded ? 'true' : 'false'}">Breakdown <span class="toggle-icon">${isExpanded ? '▲' : '▼'}</span></button>` : ''}
             </div>
-            <span class="subproj-breakdown-stats">${subDone}/${subTotal} (${subPct}%)</span>
-          `;
+            <div class="progress-track">
+              <div class="progress-fill" style="width: ${projPct}%;"></div>
+            </div>
+          </div>
+          <div class="project-stats-col">
+            <span class="project-count-stat">${projCompleted} of ${projTotal} done</span>
+            <span class="project-pct">${projPct}%</span>
+          </div>
+        `;
 
-          subItem.style.cursor = 'pointer';
-          subItem.addEventListener('click', () => {
-            state.selectedCategory = proj.name;
-            state.selectedSubproject = subName;
-            goToSlide(1);
-          });
-
-          breakdownEl.appendChild(subItem);
+        row.querySelector('.project-name').addEventListener('click', () => {
+          state.selectedCategory = proj.name;
+          state.selectedSubproject = null;
+          goToSlide(1);
         });
 
-        // Tasks under parent without subproject
-        const directTasks = projectTasks.filter((t) => !parseTask(t).subproject);
-        if (directTasks.length > 0) {
-          const directTotal = directTasks.length;
-          const directDone = directTasks.filter((t) => Boolean(t.completed)).length;
-          const directPct = Math.round((directDone / directTotal) * 100);
-
-          const directItem = document.createElement('div');
-          directItem.className = 'subproject-breakdown-item';
-          directItem.innerHTML = `
-            <div class="subproj-breakdown-body">
-              <span class="subproj-breakdown-name">
-                <span class="subproj-branch-symbol">↳</span> <em>General</em>
-              </span>
-              <div class="progress-track-mini">
-                <div class="progress-fill-mini" style="width: ${directPct}%;"></div>
-              </div>
-            </div>
-            <span class="subproj-breakdown-stats">${directDone}/${directTotal} (${directPct}%)</span>
-          `;
-          breakdownEl.appendChild(directItem);
+        if (hasSubprojects) {
+          const toggleBtn = row.querySelector('.subproject-toggle-btn');
+          if (toggleBtn) {
+            toggleBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              if (state.expandedProjects.has(proj.id)) {
+                state.expandedProjects.delete(proj.id);
+              } else {
+                state.expandedProjects.add(proj.id);
+              }
+              renderPerformanceMetrics();
+            });
+          }
         }
 
-        wrapper.appendChild(breakdownEl);
-      }
+        wrapper.appendChild(row);
 
-      elements.projectItemsList.appendChild(wrapper);
+        // Expandable Sub-projects breakdown
+        if (hasSubprojects && isExpanded) {
+          const breakdownEl = document.createElement('div');
+          breakdownEl.className = 'subproject-breakdown-container';
+
+          subprojects.forEach((subName) => {
+            const subTasks = projectTasks.filter((t) => (parseTask(t).subproject || '').toLowerCase() === subName.toLowerCase());
+            const subTotal = subTasks.length;
+            const subDone = subTasks.filter((t) => Boolean(t.completed)).length;
+            const subPct = subTotal > 0 ? Math.round((subDone / subTotal) * 100) : 0;
+
+            const subItem = document.createElement('div');
+            subItem.className = 'subproject-breakdown-item';
+            subItem.innerHTML = `
+              <div class="subproj-breakdown-body">
+                <span class="subproj-breakdown-name">
+                  <span class="subproj-branch-symbol">↳</span> ${escapeHtml(subName)}
+                </span>
+                <div class="progress-track-mini">
+                  <div class="progress-fill-mini" style="width: ${subPct}%;"></div>
+                </div>
+              </div>
+              <span class="subproj-breakdown-stats">${subDone}/${subTotal} (${subPct}%)</span>
+            `;
+
+            subItem.style.cursor = 'pointer';
+            subItem.addEventListener('click', () => {
+              state.selectedCategory = proj.name;
+              state.selectedSubproject = subName;
+              goToSlide(1);
+            });
+
+            breakdownEl.appendChild(subItem);
+          });
+
+          // Tasks under parent without subproject
+          const directTasks = projectTasks.filter((t) => !parseTask(t).subproject);
+          if (directTasks.length > 0) {
+            const directTotal = directTasks.length;
+            const directDone = directTasks.filter((t) => Boolean(t.completed)).length;
+            const directPct = Math.round((directDone / directTotal) * 100);
+
+            const directItem = document.createElement('div');
+            directItem.className = 'subproject-breakdown-item';
+            directItem.innerHTML = `
+              <div class="subproj-breakdown-body">
+                <span class="subproj-breakdown-name">
+                  <span class="subproj-branch-symbol">↳</span> <em>General</em>
+                </span>
+                <div class="progress-track-mini">
+                  <div class="progress-fill-mini" style="width: ${directPct}%;"></div>
+                </div>
+              </div>
+              <span class="subproj-breakdown-stats">${directDone}/${directTotal} (${directPct}%)</span>
+            `;
+            breakdownEl.appendChild(directItem);
+          }
+
+          wrapper.appendChild(breakdownEl);
+        }
+
+        elements.projectItemsList.appendChild(wrapper);
+      });
     });
   }
 
@@ -1444,6 +1662,13 @@
     if (elements.openAddProjectBtn) {
       elements.openAddProjectBtn.addEventListener('click', () => {
         openEditProjectForm(null);
+      });
+    }
+
+    if (elements.toggleReorderBtn) {
+      elements.toggleReorderBtn.addEventListener('click', () => {
+        state.isReordering = !state.isReordering;
+        renderProjectsUI();
       });
     }
 

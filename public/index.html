@@ -283,10 +283,13 @@
           <div class="section-container">
             <div class="section-header">
               <h2 class="section-title">Projects</h2>
-              <button type="button" class="btn-sm-action" id="openAddProjectBtn">+ Add Project</button>
+              <div class="projects-header-actions">
+                <button type="button" class="btn-sm-outline" id="toggleReorderBtn" title="Customize sorting order">⇅ Reorder</button>
+                <button type="button" class="btn-sm-action" id="openAddProjectBtn">+ Add Project</button>
+              </div>
             </div>
 
-            <!-- Add / Edit Project Card Form (Supports Project and Sub-project) -->
+            <!-- Add / Edit Project Card Form (Supports Project, Group, and Sub-project) -->
             <div class="card project-form-card hidden" id="projectFormCard">
               <h3 class="form-card-title" id="projectFormTitle">New Project</h3>
               <form id="projectForm" class="project-form">
@@ -304,6 +307,19 @@
                     maxlength="40"
                     required
                   />
+                </div>
+
+                <div class="form-group" id="projectGroupFieldGroup">
+                  <label class="form-label" for="projectGroupInput">Group</label>
+                  <input
+                    type="text"
+                    id="projectGroupInput"
+                    class="input-field"
+                    placeholder="e.g. Management, Product, Personal"
+                    maxlength="40"
+                    list="groupSuggestionsList"
+                  />
+                  <datalist id="groupSuggestionsList"></datalist>
                 </div>
 
                 <div class="form-actions-row">
@@ -390,6 +406,6 @@
     </nav>
   </div>
 
-  <script src="app.js?v=20261022-3"></script>
+  <script src="app.js?v=20261022-4"></script>
 </body>
 </html>
