@@ -2,27 +2,27 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="A clean, responsive single-page task manager powered by Cloudflare Pages and D1." />
-  <title>Tasks - Cloudflare D1 Manager</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="description" content="A minimalist, high-performance task and focus manager powered by Cloudflare Pages and D1." />
+  <title>Tasks &amp; Performance</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <!-- Authentication Overlay -->
   <div id="authOverlay" class="auth-overlay hidden">
-    <div class="auth-card card" role="dialog" aria-labelledby="authTitle" aria-modal="true">
+    <div class="auth-card" role="dialog" aria-labelledby="authTitle" aria-modal="true">
       <div class="auth-header">
-        <div class="auth-icon" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <div class="auth-icon-circle" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
             <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
           </svg>
         </div>
-        <h2 id="authTitle" class="auth-title">Authentication Required</h2>
-        <p class="auth-subtitle">Enter your application password to view and manage tasks.</p>
+        <h2 id="authTitle" class="auth-title">Welcome Back</h2>
+        <p class="auth-subtitle">Enter your passcode to access tasks and performance analytics.</p>
       </div>
 
       <div id="authAlert" class="auth-alert hidden" role="alert" aria-live="assertive"></div>
@@ -39,120 +39,320 @@
             required
           />
         </div>
-        <button type="submit" id="authSubmitBtn" class="btn btn-primary auth-submit-btn">
-          <span class="auth-btn-text">Unlock Application</span>
+        <button type="submit" id="authSubmitBtn" class="btn btn-dark-pill auth-submit-btn">
+          <span class="auth-btn-text">Unlock</span>
           <span class="btn-spinner hidden" aria-hidden="true"></span>
         </button>
       </form>
     </div>
   </div>
 
-  <!-- Main Application Layout -->
-  <div id="appLayout" class="app-layout hidden">
-    <header class="app-header">
-      <div class="brand">
-        <div class="brand-icon" aria-hidden="true">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
-        </div>
-        <div class="brand-text">
-          <h1 class="brand-title">Tasks</h1>
-          <p class="brand-subtitle">Cloudflare Pages &amp; D1 Database</p>
-        </div>
+  <!-- Notification Banner -->
+  <div id="banner" class="banner hidden" role="alert" aria-live="polite">
+    <span id="bannerMessage" class="banner-message"></span>
+    <button id="bannerClose" class="banner-close" aria-label="Dismiss notification">&times;</button>
+  </div>
+
+  <!-- Main Application Wrapper -->
+  <div id="appLayout" class="app-container hidden">
+    <!-- Slidable Viewport -->
+    <div class="page-viewport" id="pageViewport">
+      <div class="page-slider" id="pageSlider">
+        
+        <!-- ================= PAGE 1: TASKS ================= -->
+        <section class="page-slide" id="tasksPage" aria-label="Task Management">
+          <!-- Page Header -->
+          <header class="slide-header">
+            <div class="header-left">
+              <h1 class="page-title">Tasks</h1>
+              <p class="page-subtitle" id="tasksSubtitle">Manage project action items</p>
+            </div>
+            <div class="header-actions">
+              <div id="connectionStatus" class="status-indicator" title="Connection status">
+                <span class="status-dot"></span>
+                <span class="status-label">Ready</span>
+              </div>
+              <button type="button" id="lockBtn" class="circle-btn" title="Lock session" aria-label="Lock application session">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+              </button>
+            </div>
+          </header>
+
+          <!-- Add Task Form Card -->
+          <div class="card add-task-card">
+            <form id="todoForm" class="todo-form">
+              <div class="input-with-button">
+                <input
+                  type="text"
+                  id="taskInput"
+                  class="task-input-field"
+                  placeholder="What needs to be done?"
+                  maxlength="255"
+                  autocomplete="off"
+                  required
+                />
+                <button type="submit" id="submitBtn" class="btn btn-add">
+                  <span class="btn-text">Add</span>
+                  <span class="btn-spinner hidden" aria-hidden="true"></span>
+                </button>
+              </div>
+
+              <!-- Project Category Selector Pills -->
+              <div class="category-selector-row" role="radiogroup" aria-label="Select project category">
+                <span class="category-label">Project:</span>
+                <button type="button" class="category-chip active" data-category="Decision making" role="radio" aria-checked="true">
+                  <span class="chip-icon">🪴</span> Decision making
+                </button>
+                <button type="button" class="category-chip" data-category="Design system" role="radio" aria-checked="false">
+                  <span class="chip-icon">🍎</span> Design system
+                </button>
+                <button type="button" class="category-chip" data-category="Exploration phase" role="radio" aria-checked="false">
+                  <span class="chip-icon">🥞</span> Exploration phase
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Filter Segmented Control -->
+          <div class="segmented-control" role="tablist" aria-label="Task Status Filters">
+            <button type="button" class="segment-tab filter-tab active" data-filter="all" role="tab" aria-selected="true">
+              All <span class="counter" id="countAll">0</span>
+            </button>
+            <button type="button" class="segment-tab filter-tab" data-filter="active" role="tab" aria-selected="false">
+              Active <span class="counter" id="countActive">0</span>
+            </button>
+            <button type="button" class="segment-tab filter-tab" data-filter="completed" role="tab" aria-selected="false">
+              Done <span class="counter" id="countCompleted">0</span>
+            </button>
+          </div>
+
+          <!-- Task List Card -->
+          <div class="card list-card">
+            <!-- Loading Skeleton -->
+            <div id="loadingSkeleton" class="skeleton-list" aria-hidden="true">
+              <div class="skeleton-item"><div class="skeleton-circle"></div><div class="skeleton-line"></div></div>
+              <div class="skeleton-item"><div class="skeleton-circle"></div><div class="skeleton-line short"></div></div>
+              <div class="skeleton-item"><div class="skeleton-circle"></div><div class="skeleton-line medium"></div></div>
+            </div>
+
+            <!-- Task List -->
+            <ul id="todoList" class="todo-list hidden" aria-label="Task list"></ul>
+
+            <!-- Empty State -->
+            <div id="emptyState" class="empty-state hidden">
+              <div class="empty-icon" aria-hidden="true">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+              </div>
+              <p id="emptyMessage" class="empty-text">No tasks yet. Add your first task above.</p>
+            </div>
+
+            <!-- List Footer -->
+            <div class="card-footer">
+              <span id="itemsLeft" class="items-left">0 tasks remaining</span>
+              <div class="footer-actions">
+                <button type="button" id="clearCompletedBtn" class="clear-btn" disabled>
+                  Clear completed
+                </button>
+                <span class="sync-status" id="syncStatus">Up to date</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= PAGE 2: PERFORMANCE ================= -->
+        <section class="page-slide" id="performancePage" aria-label="Performance Analytics">
+          <!-- Page Header matching screenshot -->
+          <header class="slide-header">
+            <h1 class="page-title">Performance</h1>
+            <div class="header-actions">
+              <button type="button" class="circle-btn" id="notifBtn" title="Notifications" aria-label="Notifications">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                </svg>
+              </button>
+              <button type="button" class="circle-btn" id="calBtn" title="Calendar" aria-label="Calendar view">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                  <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+              </button>
+            </div>
+          </header>
+
+          <!-- Period Segmented Control (Week / Month / Year) -->
+          <div class="segmented-control" role="tablist" aria-label="Performance Time Period">
+            <button type="button" class="segment-tab period-tab active" data-period="week" role="tab" aria-selected="true">
+              Week
+            </button>
+            <button type="button" class="segment-tab period-tab" data-period="month" role="tab" aria-selected="false">
+              Month
+            </button>
+            <button type="button" class="segment-tab period-tab" data-period="year" role="tab" aria-selected="false">
+              Year
+            </button>
+          </div>
+
+          <!-- Focused Time Card with Heatmap -->
+          <div class="card focus-card">
+            <div class="focus-card-header">
+              <span class="metric-label">Focused time</span>
+              <span class="trend-badge" id="trendBadge">
+                <span class="badge-arrow">▲</span> +3.45%
+              </span>
+            </div>
+            <div class="focus-stat-row">
+              <span class="big-stat" id="focusedTimeValue">32h 40m</span>
+              <span class="comparison-subtext" id="comparisonSubtext">vs. 31h 34m last week</span>
+            </div>
+
+            <!-- Activity Matrix / Heatmap Grid -->
+            <div class="heatmap-container" aria-label="Activity heatmap">
+              <div class="heatmap-grid" id="heatmapGrid"></div>
+            </div>
+          </div>
+
+          <!-- Time by Project Section -->
+          <div class="section-container">
+            <div class="section-header">
+              <h2 class="section-title">Time by project</h2>
+              <button type="button" class="see-all-btn" id="seeAllProjectsBtn">See all</button>
+            </div>
+
+            <div class="card projects-card">
+              <div class="project-items-list" id="projectItemsList">
+                <!-- Project 1: Decision making -->
+                <div class="project-row-item" data-project="Decision making">
+                  <div class="project-icon-box">🪴</div>
+                  <div class="project-body-col">
+                    <span class="project-name">Decision making</span>
+                    <div class="progress-track">
+                      <div class="progress-fill" id="projBar-decision" style="width: 62%;"></div>
+                    </div>
+                  </div>
+                  <div class="project-stats-col">
+                    <span class="project-hours" id="projHours-decision">14h 20m</span>
+                    <span class="project-pct" id="projPct-decision">62%</span>
+                  </div>
+                </div>
+
+                <!-- Project 2: Design system -->
+                <div class="project-row-item" data-project="Design system">
+                  <div class="project-icon-box">🍎</div>
+                  <div class="project-body-col">
+                    <span class="project-name">Design system</span>
+                    <div class="progress-track">
+                      <div class="progress-fill" id="projBar-design" style="width: 48%;"></div>
+                    </div>
+                  </div>
+                  <div class="project-stats-col">
+                    <span class="project-hours" id="projHours-design">11h 05m</span>
+                    <span class="project-pct" id="projPct-design">48%</span>
+                  </div>
+                </div>
+
+                <!-- Project 3: Exploration phase -->
+                <div class="project-row-item" data-project="Exploration phase">
+                  <div class="project-icon-box">🥞</div>
+                  <div class="project-body-col">
+                    <span class="project-name">Exploration phase</span>
+                    <div class="progress-track">
+                      <div class="progress-fill" id="projBar-exploration" style="width: 31%;"></div>
+                    </div>
+                  </div>
+                  <div class="project-stats-col">
+                    <span class="project-hours" id="projHours-exploration">7h 15m</span>
+                    <span class="project-pct" id="projPct-exploration">31%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Dual Metrics Grid -->
+          <div class="metrics-grid">
+            <!-- Metric 1: Tasks Done -->
+            <div class="card metric-card">
+              <div class="metric-icon-badge check-badge" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </div>
+              <span class="metric-sublabel">Tasks done</span>
+              <span class="metric-number" id="tasksDoneCount">18</span>
+            </div>
+
+            <!-- Metric 2: Avg Daily Focus -->
+            <div class="card metric-card">
+              <div class="metric-icon-badge hourglass-badge" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M5 22h14"></path>
+                  <path d="M5 2h14"></path>
+                  <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"></path>
+                  <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"></path>
+                </svg>
+              </div>
+              <span class="metric-sublabel">Avg. daily focus</span>
+              <span class="metric-number" id="avgDailyFocusValue">4h 40m</span>
+            </div>
+          </div>
+
+        </section>
+
       </div>
-      <div class="header-actions">
-        <div id="connectionStatus" class="status-indicator" title="Connection status">
-          <span class="status-dot"></span>
-          <span class="status-label">Ready</span>
-        </div>
-        <button type="button" id="lockBtn" class="icon-btn lock-btn" title="Lock session" aria-label="Lock application session">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+    </div>
+
+    <!-- Floating Bottom Navigation Dock -->
+    <nav class="bottom-floating-bar" aria-label="Primary Navigation">
+      <div class="nav-dock">
+        <!-- Tab 1: Home / Tasks (matching exact rounded house silhouette from screenshot) -->
+        <button type="button" class="dock-item active" id="navTasksBtn" data-slide="0" aria-label="Tasks Page" aria-selected="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1V9.5z"></path>
+          </svg>
+        </button>
+
+        <!-- Tab 2: Performance / Analytics (Pie chart icon from screenshot) -->
+        <button type="button" class="dock-item" id="navPerformanceBtn" data-slide="1" aria-label="Performance Page" aria-selected="false">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path>
+            <path d="M22 12A10 10 0 0 0 12 2v10z"></path>
+          </svg>
+        </button>
+
+        <!-- Tab 3: Discussion / Comments -->
+        <button type="button" class="dock-item" id="navMessagesBtn" aria-label="Discussions">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </button>
+
+        <!-- Tab 4: Profile / User -->
+        <button type="button" class="dock-item" id="navProfileBtn" aria-label="Profile">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
           </svg>
         </button>
       </div>
-    </header>
 
-    <main class="app-main">
-      <section class="card" aria-label="Task Management">
-        <!-- Notification Area -->
-        <div id="banner" class="banner hidden" role="alert" aria-live="polite">
-          <span id="bannerMessage" class="banner-message"></span>
-          <button id="bannerClose" class="banner-close" aria-label="Dismiss notification">&times;</button>
-        </div>
-
-        <!-- Add Task Form -->
-        <form id="todoForm" class="todo-form">
-          <label for="taskInput" class="sr-only">New task title</label>
-          <input
-            type="text"
-            id="taskInput"
-            class="input-field"
-            placeholder="What needs to be done?"
-            maxlength="255"
-            autocomplete="off"
-            required
-          />
-          <button type="submit" id="submitBtn" class="btn btn-primary">
-            <span class="btn-text">Add Task</span>
-            <span class="btn-spinner hidden" aria-hidden="true"></span>
-          </button>
-        </form>
-
-        <!-- Filter Controls -->
-        <div class="controls-bar">
-          <div class="filter-group" role="tablist" aria-label="Task Filters">
-            <button type="button" class="filter-tab active" data-filter="all" role="tab" aria-selected="true">
-              All <span class="counter" id="countAll">0</span>
-            </button>
-            <button type="button" class="filter-tab" data-filter="active" role="tab" aria-selected="false">
-              Active <span class="counter" id="countActive">0</span>
-            </button>
-            <button type="button" class="filter-tab" data-filter="completed" role="tab" aria-selected="false">
-              Completed <span class="counter" id="countCompleted">0</span>
-            </button>
-          </div>
-
-          <button type="button" id="clearCompletedBtn" class="btn btn-ghost" disabled>
-            Clear completed
-          </button>
-        </div>
-
-        <!-- Skeleton Loading State -->
-        <div id="loadingSkeleton" class="skeleton-list" aria-hidden="true">
-          <div class="skeleton-item"><div class="skeleton-box"></div><div class="skeleton-line"></div></div>
-          <div class="skeleton-item"><div class="skeleton-box"></div><div class="skeleton-line short"></div></div>
-          <div class="skeleton-item"><div class="skeleton-box"></div><div class="skeleton-line medium"></div></div>
-        </div>
-
-        <!-- Task List -->
-        <ul id="todoList" class="todo-list hidden" aria-label="Task list"></ul>
-
-        <!-- Empty State -->
-        <div id="emptyState" class="empty-state hidden">
-          <div class="empty-icon" aria-hidden="true">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="8" x2="12" y2="12"></line>
-              <line x1="12" y1="16" x2="12.01" y2="16"></line>
-            </svg>
-          </div>
-          <p id="emptyMessage" class="empty-text">No tasks yet. Add your first task above.</p>
-        </div>
-
-        <!-- Card Footer -->
-        <div class="card-footer">
-          <span id="itemsLeft" class="items-left">0 tasks remaining</span>
-          <span class="sync-status" id="syncStatus">Up to date</span>
-        </div>
-      </section>
-    </main>
-
-    <footer class="app-footer">
-      <p>Powered by Cloudflare Pages Functions &bull; Cloudflare D1</p>
-    </footer>
+      <!-- Floating Action Button (+ FAB) -->
+      <button type="button" class="fab-btn" id="fabAddBtn" aria-label="Quick Add Task">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+      </button>
+    </nav>
   </div>
 
   <script src="app.js"></script>

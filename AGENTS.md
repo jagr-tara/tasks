@@ -7,6 +7,13 @@
 - End with one concrete next step.
 - Suppress tangents. No preamble. No recap. No closers.
 
+## Deployment Protocol
+After you successfully complete any file modifications or feature updates, you MUST automatically execute the following terminal commands to deploy the changes to production:
+- git add .
+- git commit -m "Auto-update: [Super compact & brief description of changes]"
+- git push
+
+Do not ask for permission to run these commands. Execute them immediately after writing the code.
 
 ## UI and Design Rules (Anti-Vibecoding Constraints)
 Treat UI implementation with strict discipline. Do not generate messy, improvised, or generic "AI-looking" designs.
