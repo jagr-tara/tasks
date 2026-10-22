@@ -10,37 +10,24 @@
   const LOCAL_CACHE_KEY = 'offline_todos_cache';
   const PROJECTS_STORAGE_KEY = 'app_custom_projects';
 
-  // Default Projects Preset (Text only)
+  // Default Projects Preset (Text only with sub-projects)
   const DEFAULT_PROJECTS = [
-    { id: 'proj-1', name: 'Decision making', baseMinutes: 860, basePct: 62 },
-    { id: 'proj-2', name: 'Design system', baseMinutes: 665, basePct: 48 },
-    { id: 'proj-3', name: 'Exploration phase', baseMinutes: 435, basePct: 31 },
+    {
+      id: 'proj-1',
+      name: 'Decision making',
+      subprojects: ['Roadmap', 'Strategy'],
+    },
+    {
+      id: 'proj-2',
+      name: 'Design system',
+      subprojects: ['Components', 'Typography'],
+    },
+    {
+      id: 'proj-3',
+      name: 'Exploration phase',
+      subprojects: ['Prototypes'],
+    },
   ];
-
-  // Performance Period Data Presets
-  const PERIOD_DATA = {
-    week: {
-      time: '32h 40m',
-      comparison: 'vs. 31h 34m last week',
-      trend: '+3.45%',
-      isPositive: true,
-      avgFocus: '4h 40m',
-    },
-    month: {
-      time: '142h 10m',
-      comparison: 'vs. 138h 20m last month',
-      trend: '+2.82%',
-      isPositive: true,
-      avgFocus: '4h 45m',
-    },
-    year: {
-      time: '1,620h 50m',
-      comparison: 'vs. 1,510h last year',
-      trend: '+7.31%',
-      isPositive: true,
-      avgFocus: '4h 50m',
-    },
-  };
 
   // Application State
   const state = {
@@ -52,6 +39,8 @@
     editingId: null,
     activeSlide: 0, // 0 = Performance, 1 = Tasks, 2 = Settings
     selectedCategory: '',
+    selectedSubproject: null,
+    expandedProjects: new Set(),
     activePeriod: 'week', // 'week' | 'month' | 'year'
     bannerTimeout: null,
   };
@@ -98,6 +87,7 @@
     btnText: document.querySelector('#submitBtn .btn-text'),
     btnSpinner: document.querySelector('#submitBtn .btn-spinner'),
     taskCategoryChipsRow: document.getElementById('taskCategoryChipsRow'),
+    taskSubprojectChipsRow: document.getElementById('taskSubprojectChipsRow'),
     filterTabs: document.querySelectorAll('.filter-tab'),
     todoList: document.getElementById('todoList'),
     loadingSkeleton: document.getElementById('loadingSkeleton'),
@@ -115,10 +105,12 @@
     projectFormTitle: document.getElementById('projectFormTitle'),
     projectForm: document.getElementById('projectForm'),
     editProjectId: document.getElementById('editProjectId'),
+    editParentProjectId: document.getElementById('editParentProjectId'),
+    editSubprojectName: document.getElementById('editSubprojectName'),
+    projectNameLabel: document.getElementById('projectNameLabel'),
     projectNameInput: document.getElementById('projectNameInput'),
     cancelProjectBtn: document.getElementById('cancelProjectBtn'),
     settingsProjectsList: document.getElementById('settingsProjectsList'),
-    resetProjectsBtn: document.getElementById('resetProjectsBtn'),
 
     // Feedback Elements
     banner: document.getElementById('banner'),
@@ -135,10 +127,11 @@
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((p) => {
-            const { icon, ...rest } = p;
-            return rest;
-          });
+          return parsed.map((p, idx) => ({
+            id: p.id || `proj-${idx + 1}`,
+            name: p.name,
+            subprojects: Array.isArray(p.subprojects) ? p.subprojects : [],
+          }));
         }
       }
     } catch {
@@ -249,16 +242,33 @@
     const match = rawTitle.match(/^\[(.*?)\]\s*(.*)$/);
 
     if (match) {
-      const proj = getProjectByName(match[1]);
+      const tagContent = match[1].trim();
+      const cleanTitle = match[2] || rawTitle;
+
+      if (tagContent.includes('/')) {
+        const slashIndex = tagContent.indexOf('/');
+        const parentName = tagContent.substring(0, slashIndex).trim();
+        const subName = tagContent.substring(slashIndex + 1).trim();
+        const proj = getProjectByName(parentName);
+        return {
+          category: proj ? proj.name : parentName,
+          subproject: subName || null,
+          cleanTitle,
+        };
+      }
+
+      const proj = getProjectByName(tagContent);
       return {
-        category: proj ? proj.name : match[1],
-        cleanTitle: match[2] || rawTitle,
+        category: proj ? proj.name : tagContent,
+        subproject: null,
+        cleanTitle,
       };
     }
 
-    const defaultProj = state.projects[0] || { name: 'General' };
+    const defaultProj = state.projects[0] || { name: 'General', subprojects: [] };
     return {
       category: defaultProj.name,
+      subproject: null,
       cleanTitle: rawTitle,
     };
   }
@@ -435,7 +445,9 @@
     setSyncing(true, 'Adding...');
 
     const category = state.selectedCategory || (state.projects[0] ? state.projects[0].name : 'General');
-    const formattedTitle = `[${category}] ${cleanTitle}`;
+    const subproject = state.selectedSubproject;
+    const tag = subproject ? `[${category} / ${subproject}]` : `[${category}]`;
+    const formattedTitle = `${tag} ${cleanTitle}`;
 
     try {
       const data = await apiRequest(API_ENDPOINT, {
@@ -487,7 +499,7 @@
     }
   }
 
-  async function handleSaveTitle(id, rawTitle, originalCategory) {
+  async function handleSaveTitle(id, rawTitle, originalCategory, originalSubproject = null) {
     const trimmed = rawTitle.trim();
     if (!trimmed) {
       render();
@@ -498,7 +510,10 @@
 
     let finalTitle = trimmed;
     if (!trimmed.startsWith('[')) {
-      finalTitle = `[${originalCategory || state.selectedCategory}] ${trimmed}`;
+      const tag = originalSubproject
+        ? `[${originalCategory} / ${originalSubproject}]`
+        : `[${originalCategory || state.selectedCategory}]`;
+      finalTitle = `${tag} ${trimmed}`;
     }
 
     try {
@@ -653,11 +668,26 @@
     }
   }
 
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   // ================= PROJECT MANAGEMENT & UI BINDING =================
   function renderProjectsUI() {
     // Ensure selectedCategory is valid
     if (!state.projects.some((p) => p.name === state.selectedCategory)) {
       state.selectedCategory = state.projects[0] ? state.projects[0].name : '';
+    }
+
+    const curProj = state.projects.find((p) => p.name === state.selectedCategory);
+    if (!curProj || !Array.isArray(curProj.subprojects) || !curProj.subprojects.includes(state.selectedSubproject)) {
+      state.selectedSubproject = null;
     }
 
     // 1. Render Category Chips on Tasks Page (Text only, wraps into new row)
@@ -674,74 +704,189 @@
         chip.textContent = proj.name;
 
         chip.addEventListener('click', () => {
-          if (elements.taskCategoryChipsRow) {
-            elements.taskCategoryChipsRow.querySelectorAll('.category-chip').forEach((c) => {
-              c.classList.remove('active');
-              c.setAttribute('aria-checked', 'false');
-            });
-          }
-          chip.classList.add('active');
-          chip.setAttribute('aria-checked', 'true');
           state.selectedCategory = proj.name;
+          state.selectedSubproject = null;
+          renderProjectsUI();
         });
 
         elements.taskCategoryChipsRow.appendChild(chip);
       });
     }
 
-    // 2. Render Projects List on Settings Page (Text only)
-    elements.settingsProjectsList.innerHTML = '';
-    state.projects.forEach((proj) => {
-      const taskCount = state.todos.filter((t) => parseTask(t).category.toLowerCase() === proj.name.toLowerCase()).length;
+    // 1b. Render Sub-project Chips on Tasks Page (if current project has subprojects)
+    if (elements.taskSubprojectChipsRow) {
+      if (curProj && Array.isArray(curProj.subprojects) && curProj.subprojects.length > 0) {
+        elements.taskSubprojectChipsRow.classList.remove('hidden');
+        elements.taskSubprojectChipsRow.innerHTML = '<span class="category-label">Sub-project:</span>';
 
-      const item = document.createElement('div');
-      item.className = 'project-manage-item';
-      item.dataset.id = proj.id;
-      item.innerHTML = `
-        <div class="proj-manage-left">
-          <div class="proj-manage-name">${proj.name}</div>
-          <div class="project-pct">${taskCount} task${taskCount === 1 ? '' : 's'}</div>
-        </div>
-        <div class="proj-manage-actions">
-          <button type="button" class="icon-btn edit-proj-btn" aria-label="Edit project ${proj.name}">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-            </svg>
-          </button>
-          <button type="button" class="icon-btn icon-btn-delete delete-proj-btn" aria-label="Delete project ${proj.name}">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="3 6 5 6 21 6"></polyline>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-            </svg>
-          </button>
-        </div>
-      `;
+        // "All / General" chip
+        const allChip = document.createElement('button');
+        allChip.type = 'button';
+        const isAllActive = !state.selectedSubproject;
+        allChip.className = `subproject-chip ${isAllActive ? 'active' : ''}`;
+        allChip.textContent = 'General';
+        allChip.addEventListener('click', () => {
+          state.selectedSubproject = null;
+          renderProjectsUI();
+        });
+        elements.taskSubprojectChipsRow.appendChild(allChip);
 
-      item.querySelector('.edit-proj-btn').addEventListener('click', () => {
-        openEditProjectForm(proj);
+        // Specific subproject chips
+        curProj.subprojects.forEach((subName) => {
+          const subChip = document.createElement('button');
+          subChip.type = 'button';
+          const isSubActive = state.selectedSubproject === subName;
+          subChip.className = `subproject-chip ${isSubActive ? 'active' : ''}`;
+          subChip.textContent = subName;
+          subChip.addEventListener('click', () => {
+            state.selectedSubproject = subName;
+            renderProjectsUI();
+          });
+          elements.taskSubprojectChipsRow.appendChild(subChip);
+        });
+      } else {
+        elements.taskSubprojectChipsRow.classList.add('hidden');
+        elements.taskSubprojectChipsRow.innerHTML = '';
+      }
+    }
+
+    // 2. Render Projects & Sub-projects List on Settings Page
+    if (elements.settingsProjectsList) {
+      elements.settingsProjectsList.innerHTML = '';
+      state.projects.forEach((proj) => {
+        const projTasks = state.todos.filter((t) => parseTask(t).category.toLowerCase() === proj.name.toLowerCase());
+        const projCompleted = projTasks.filter((t) => Boolean(t.completed)).length;
+        const subprojects = Array.isArray(proj.subprojects) ? proj.subprojects : [];
+
+        const item = document.createElement('div');
+        item.className = 'project-manage-item';
+        item.dataset.id = proj.id;
+
+        // Parent project header
+        const headerEl = document.createElement('div');
+        headerEl.className = 'proj-manage-header';
+        headerEl.innerHTML = `
+          <div class="proj-manage-left">
+            <div class="proj-manage-name">${escapeHtml(proj.name)}</div>
+            <div class="project-pct">${projTasks.length} task${projTasks.length === 1 ? '' : 's'} (${projCompleted} done)</div>
+          </div>
+          <div class="proj-manage-actions">
+            <button type="button" class="btn-xs-action add-subproj-btn" title="Add sub-project to ${escapeHtml(proj.name)}">+ Sub</button>
+            <button type="button" class="icon-btn edit-proj-btn" aria-label="Edit project ${escapeHtml(proj.name)}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+              </svg>
+            </button>
+            <button type="button" class="icon-btn icon-btn-delete delete-proj-btn" aria-label="Delete project ${escapeHtml(proj.name)}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+            </button>
+          </div>
+        `;
+
+        headerEl.querySelector('.add-subproj-btn').addEventListener('click', () => {
+          openEditProjectForm(null, proj, null);
+        });
+
+        headerEl.querySelector('.edit-proj-btn').addEventListener('click', () => {
+          openEditProjectForm(proj, null, null);
+        });
+
+        headerEl.querySelector('.delete-proj-btn').addEventListener('click', () => {
+          handleDeleteProject(proj.id);
+        });
+
+        item.appendChild(headerEl);
+
+        // Sub-projects list under parent project
+        if (subprojects.length > 0) {
+          const subListEl = document.createElement('div');
+          subListEl.className = 'subprojects-manage-list';
+
+          subprojects.forEach((subName) => {
+            const subTasks = projTasks.filter((t) => (parseTask(t).subproject || '').toLowerCase() === subName.toLowerCase());
+            const subDone = subTasks.filter((t) => Boolean(t.completed)).length;
+
+            const subItem = document.createElement('div');
+            subItem.className = 'subproject-manage-item';
+            subItem.innerHTML = `
+              <div class="subproj-manage-left">
+                <span class="subproj-branch-symbol">↳</span>
+                <span class="subproj-manage-name">${escapeHtml(subName)}</span>
+                <span class="subproj-count-badge">(${subDone}/${subTasks.length})</span>
+              </div>
+              <div class="proj-manage-actions">
+                <button type="button" class="icon-btn-xs edit-subproj-btn" title="Edit sub-project ${escapeHtml(subName)}">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                  </svg>
+                </button>
+                <button type="button" class="icon-btn-xs delete-subproj-btn" title="Delete sub-project ${escapeHtml(subName)}">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                </button>
+              </div>
+            `;
+
+            subItem.querySelector('.edit-subproj-btn').addEventListener('click', () => {
+              openEditProjectForm(null, proj, subName);
+            });
+
+            subItem.querySelector('.delete-subproj-btn').addEventListener('click', () => {
+              handleDeleteSubproject(proj.id, subName);
+            });
+
+            subListEl.appendChild(subItem);
+          });
+
+          item.appendChild(subListEl);
+        }
+
+        elements.settingsProjectsList.appendChild(item);
       });
-
-      item.querySelector('.delete-proj-btn').addEventListener('click', () => {
-        handleDeleteProject(proj.id);
-      });
-
-      elements.settingsProjectsList.appendChild(item);
-    });
+    }
 
     renderPerformanceMetrics();
   }
 
-  function openEditProjectForm(proj = null) {
+  function openEditProjectForm(proj = null, parentProj = null, subName = null) {
+    if (!elements.projectFormCard) return;
     elements.projectFormCard.classList.remove('hidden');
 
-    if (proj) {
-      elements.projectFormTitle.textContent = 'Edit Project';
+    if (parentProj) {
+      // Sub-project mode
+      elements.editProjectId.value = '';
+      elements.editParentProjectId.value = parentProj.id;
+      elements.editSubprojectName.value = subName || '';
+      if (elements.projectNameLabel) {
+        elements.projectNameLabel.textContent = subName ? `Edit Sub-project in "${parentProj.name}"` : `Sub-project Name for "${parentProj.name}"`;
+      }
+      elements.projectFormTitle.textContent = subName ? 'Edit Sub-project' : `Add Sub-project to "${parentProj.name}"`;
+      elements.projectNameInput.placeholder = 'e.g. Components';
+      elements.projectNameInput.value = subName || '';
+    } else if (proj) {
+      // Edit Parent Project
       elements.editProjectId.value = proj.id;
+      elements.editParentProjectId.value = '';
+      elements.editSubprojectName.value = '';
+      if (elements.projectNameLabel) elements.projectNameLabel.textContent = 'Project Name';
+      elements.projectFormTitle.textContent = 'Edit Project';
+      elements.projectNameInput.placeholder = 'e.g. Mobile Architecture';
       elements.projectNameInput.value = proj.name;
     } else {
-      elements.projectFormTitle.textContent = 'New Project';
+      // New Parent Project
       elements.editProjectId.value = '';
+      elements.editParentProjectId.value = '';
+      elements.editSubprojectName.value = '';
+      if (elements.projectNameLabel) elements.projectNameLabel.textContent = 'Project Name';
+      elements.projectFormTitle.textContent = 'New Project';
+      elements.projectNameInput.placeholder = 'e.g. Mobile Architecture';
       elements.projectNameInput.value = '';
     }
 
@@ -750,8 +895,11 @@
   }
 
   function closeProjectForm() {
+    if (!elements.projectFormCard) return;
     elements.projectFormCard.classList.add('hidden');
     elements.editProjectId.value = '';
+    elements.editParentProjectId.value = '';
+    elements.editSubprojectName.value = '';
     elements.projectNameInput.value = '';
   }
 
@@ -759,11 +907,39 @@
     event.preventDefault();
     const name = elements.projectNameInput.value.trim();
     const editId = elements.editProjectId.value;
+    const parentProjId = elements.editParentProjectId.value;
+    const editSubName = elements.editSubprojectName.value;
 
     if (!name) return;
 
-    if (editId) {
-      // Edit existing
+    if (parentProjId) {
+      // Sub-project addition / modification
+      const parent = state.projects.find((p) => p.id === parentProjId);
+      if (!parent) return;
+      if (!Array.isArray(parent.subprojects)) parent.subprojects = [];
+
+      if (editSubName) {
+        // Edit existing subproject
+        parent.subprojects = parent.subprojects.map((s) => (s.toLowerCase() === editSubName.toLowerCase() ? name : s));
+        state.todos = state.todos.map((t) => {
+          const parsed = parseTask(t);
+          if (parsed.category.toLowerCase() === parent.name.toLowerCase() && (parsed.subproject || '').toLowerCase() === editSubName.toLowerCase()) {
+            return { ...t, title: `[${parent.name} / ${name}] ${parsed.cleanTitle}` };
+          }
+          return t;
+        });
+        showBanner('Sub-project updated successfully.', 'info');
+      } else {
+        // Add new subproject
+        if (parent.subprojects.some((s) => s.toLowerCase() === name.toLowerCase())) {
+          showBanner(`Sub-project "${name}" already exists in ${parent.name}.`);
+          return;
+        }
+        parent.subprojects.push(name);
+        showBanner('Sub-project added successfully.', 'info');
+      }
+    } else if (editId) {
+      // Edit existing main project
       const existing = state.projects.find((p) => p.id === editId);
       if (existing) {
         const oldName = existing.name;
@@ -773,13 +949,15 @@
         state.todos = state.todos.map((t) => {
           const parsed = parseTask(t);
           if (parsed.category.toLowerCase() === oldName.toLowerCase()) {
-            return { ...t, title: `[${name}] ${parsed.cleanTitle}` };
+            const subTag = parsed.subproject ? ` / ${parsed.subproject}` : '';
+            return { ...t, title: `[${name}${subTag}] ${parsed.cleanTitle}` };
           }
           return t;
         });
+        showBanner('Project updated successfully.', 'info');
       }
     } else {
-      // Add new project
+      // Add new main project
       if (getProjectByName(name)) {
         showBanner(`A project named "${name}" already exists.`);
         return;
@@ -788,17 +966,16 @@
       state.projects.push({
         id: `proj-${Date.now()}`,
         name,
-        baseMinutes: 300,
-        basePct: 20,
+        subprojects: [],
       });
       state.selectedCategory = name;
+      showBanner('New project added.', 'info');
     }
 
     saveStoredProjects();
     closeProjectForm();
     renderProjectsUI();
     render();
-    showBanner(editId ? 'Project updated successfully.' : 'New project added.', 'info');
   }
 
   function handleDeleteProject(id) {
@@ -813,6 +990,7 @@
     state.projects = state.projects.filter((p) => p.id !== id);
     if (state.selectedCategory === proj.name) {
       state.selectedCategory = state.projects[0] ? state.projects[0].name : '';
+      state.selectedSubproject = null;
     }
 
     saveStoredProjects();
@@ -821,62 +999,177 @@
     showBanner(`Project "${proj.name}" removed.`, 'info');
   }
 
-  function handleResetDefaultProjects() {
-    state.projects = JSON.parse(JSON.stringify(DEFAULT_PROJECTS));
-    state.selectedCategory = state.projects[0].name;
+  function handleDeleteSubproject(parentProjId, subName) {
+    const parent = state.projects.find((p) => p.id === parentProjId);
+    if (!parent || !Array.isArray(parent.subprojects)) return;
+
+    parent.subprojects = parent.subprojects.filter((s) => s.toLowerCase() !== subName.toLowerCase());
+
+    // Update tasks under this subproject to just parent
+    state.todos = state.todos.map((t) => {
+      const parsed = parseTask(t);
+      if (parsed.category.toLowerCase() === parent.name.toLowerCase() && (parsed.subproject || '').toLowerCase() === subName.toLowerCase()) {
+        return { ...t, title: `[${parent.name}] ${parsed.cleanTitle}` };
+      }
+      return t;
+    });
+
+    if (state.selectedSubproject && state.selectedSubproject.toLowerCase() === subName.toLowerCase()) {
+      state.selectedSubproject = null;
+    }
+
     saveStoredProjects();
     renderProjectsUI();
     render();
-    showBanner('Projects reset to default.', 'info');
+    showBanner(`Sub-project "${subName}" removed.`, 'info');
   }
 
   // ================= PERFORMANCE METRICS COMPUTATION =================
   function renderPerformanceMetrics() {
-    const period = PERIOD_DATA[state.activePeriod] || PERIOD_DATA.week;
+    const totalCount = state.todos.length;
+    const completedCount = state.todos.filter((t) => Boolean(t.completed)).length;
+    const activeCount = totalCount - completedCount;
+    const overallPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
-    elements.focusedTimeValue.textContent = period.time;
-    elements.comparisonSubtext.textContent = period.comparison;
-    elements.trendBadge.innerHTML = `<span class="badge-arrow">▲</span> ${period.trend}`;
-    elements.avgDailyFocusValue.textContent = period.avgFocus;
+    if (elements.focusedTimeValue) {
+      elements.focusedTimeValue.textContent = `${overallPct}%`;
+    }
+    if (elements.comparisonSubtext) {
+      elements.comparisonSubtext.textContent = `${completedCount} of ${totalCount} tasks completed (${activeCount} active)`;
+    }
+    if (elements.trendBadge) {
+      elements.trendBadge.innerHTML = `<span class="badge-arrow">▲</span> ${overallPct}%`;
+    }
+    if (elements.tasksDoneCount) {
+      elements.tasksDoneCount.textContent = completedCount;
+    }
+    if (elements.avgDailyFocusValue) {
+      elements.avgDailyFocusValue.textContent = `${overallPct}%`;
+    }
 
-    const totalCompleted = state.todos.filter((t) => Boolean(t.completed)).length;
-    elements.tasksDoneCount.textContent = 18 + totalCompleted;
-
-    // Project breakdown calculation based on all active projects (Text only)
+    // Main parent projects list with expandable subproject progress
+    if (!elements.projectItemsList) return;
     elements.projectItemsList.innerHTML = '';
 
     state.projects.forEach((proj) => {
       const projectTasks = state.todos.filter((t) => parseTask(t).category.toLowerCase() === proj.name.toLowerCase());
-      const completedTasks = projectTasks.filter((t) => Boolean(t.completed)).length;
+      const projTotal = projectTasks.length;
+      const projCompleted = projectTasks.filter((t) => Boolean(t.completed)).length;
+      const projPct = projTotal > 0 ? Math.round((projCompleted / projTotal) * 100) : 0;
 
-      const baseMins = proj.baseMinutes || 400;
-      const basePct = proj.basePct || 30;
+      const subprojects = Array.isArray(proj.subprojects) ? proj.subprojects : [];
+      const hasSubprojects = subprojects.length > 0;
+      const isExpanded = state.expandedProjects.has(proj.id);
 
-      const currentMins = baseMins + completedTasks * 45;
-      const currentPct = Math.min(95, basePct + completedTasks * 3);
+      const wrapper = document.createElement('div');
+      wrapper.className = 'project-row-item-wrapper';
+      wrapper.dataset.projectId = proj.id;
 
+      // Parent row
       const row = document.createElement('div');
       row.className = 'project-row-item';
       row.dataset.project = proj.name;
       row.innerHTML = `
         <div class="project-body-col">
-          <span class="project-name">${proj.name}</span>
+          <div class="project-name-row">
+            <span class="project-name">${escapeHtml(proj.name)}</span>
+            ${hasSubprojects ? `<button type="button" class="subproject-toggle-btn ${isExpanded ? 'is-active' : ''}" aria-expanded="${isExpanded ? 'true' : 'false'}">Breakdown <span class="toggle-icon">${isExpanded ? '▲' : '▼'}</span></button>` : ''}
+          </div>
           <div class="progress-track">
-            <div class="progress-fill" style="width: ${currentPct}%;"></div>
+            <div class="progress-fill" style="width: ${projPct}%;"></div>
           </div>
         </div>
         <div class="project-stats-col">
-          <span class="project-hours">${formatDuration(currentMins)}</span>
-          <span class="project-pct">${currentPct}%</span>
+          <span class="project-count-stat">${projCompleted} of ${projTotal} done</span>
+          <span class="project-pct">${projPct}%</span>
         </div>
       `;
 
-      row.addEventListener('click', () => {
+      row.querySelector('.project-name').addEventListener('click', () => {
         state.selectedCategory = proj.name;
-        goToSlide(1); // Jump to Tasks with this project selected
+        state.selectedSubproject = null;
+        goToSlide(1);
       });
 
-      elements.projectItemsList.appendChild(row);
+      if (hasSubprojects) {
+        const toggleBtn = row.querySelector('.subproject-toggle-btn');
+        if (toggleBtn) {
+          toggleBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (state.expandedProjects.has(proj.id)) {
+              state.expandedProjects.delete(proj.id);
+            } else {
+              state.expandedProjects.add(proj.id);
+            }
+            renderPerformanceMetrics();
+          });
+        }
+      }
+
+      wrapper.appendChild(row);
+
+      // Expandable Sub-projects breakdown
+      if (hasSubprojects && isExpanded) {
+        const breakdownEl = document.createElement('div');
+        breakdownEl.className = 'subproject-breakdown-container';
+
+        subprojects.forEach((subName) => {
+          const subTasks = projectTasks.filter((t) => (parseTask(t).subproject || '').toLowerCase() === subName.toLowerCase());
+          const subTotal = subTasks.length;
+          const subDone = subTasks.filter((t) => Boolean(t.completed)).length;
+          const subPct = subTotal > 0 ? Math.round((subDone / subTotal) * 100) : 0;
+
+          const subItem = document.createElement('div');
+          subItem.className = 'subproject-breakdown-item';
+          subItem.innerHTML = `
+            <div class="subproj-breakdown-body">
+              <span class="subproj-breakdown-name">
+                <span class="subproj-branch-symbol">↳</span> ${escapeHtml(subName)}
+              </span>
+              <div class="progress-track-mini">
+                <div class="progress-fill-mini" style="width: ${subPct}%;"></div>
+              </div>
+            </div>
+            <span class="subproj-breakdown-stats">${subDone}/${subTotal} (${subPct}%)</span>
+          `;
+
+          subItem.style.cursor = 'pointer';
+          subItem.addEventListener('click', () => {
+            state.selectedCategory = proj.name;
+            state.selectedSubproject = subName;
+            goToSlide(1);
+          });
+
+          breakdownEl.appendChild(subItem);
+        });
+
+        // Tasks under parent without subproject
+        const directTasks = projectTasks.filter((t) => !parseTask(t).subproject);
+        if (directTasks.length > 0) {
+          const directTotal = directTasks.length;
+          const directDone = directTasks.filter((t) => Boolean(t.completed)).length;
+          const directPct = Math.round((directDone / directTotal) * 100);
+
+          const directItem = document.createElement('div');
+          directItem.className = 'subproject-breakdown-item';
+          directItem.innerHTML = `
+            <div class="subproj-breakdown-body">
+              <span class="subproj-breakdown-name">
+                <span class="subproj-branch-symbol">↳</span> <em>General</em>
+              </span>
+              <div class="progress-track-mini">
+                <div class="progress-fill-mini" style="width: ${directPct}%;"></div>
+              </div>
+            </div>
+            <span class="subproj-breakdown-stats">${directDone}/${directTotal} (${directPct}%)</span>
+          `;
+          breakdownEl.appendChild(directItem);
+        }
+
+        wrapper.appendChild(breakdownEl);
+      }
+
+      elements.projectItemsList.appendChild(wrapper);
     });
   }
 
@@ -961,7 +1254,7 @@
           input.maxLength = 255;
 
           const commitEdit = () => {
-            handleSaveTitle(todo.id, input.value, parsed.category);
+            handleSaveTitle(todo.id, input.value, parsed.category, parsed.subproject);
           };
 
           input.addEventListener('keydown', (e) => {
@@ -988,7 +1281,11 @@
 
           const tagSpan = document.createElement('span');
           tagSpan.className = 'todo-tag';
-          tagSpan.textContent = parsed.category;
+          if (parsed.subproject) {
+            tagSpan.innerHTML = `${escapeHtml(parsed.category)} <span class="tag-subproject">/ ${escapeHtml(parsed.subproject)}</span>`;
+          } else {
+            tagSpan.textContent = parsed.category;
+          }
 
           content.appendChild(titleSpan);
           content.appendChild(tagSpan);
@@ -1155,11 +1452,6 @@
     }
     if (elements.projectForm) {
       elements.projectForm.addEventListener('submit', handleSaveProject);
-    }
-
-    // Reset Projects Button
-    if (elements.resetProjectsBtn) {
-      elements.resetProjectsBtn.addEventListener('click', handleResetDefaultProjects);
     }
 
     initSwipeGestures();

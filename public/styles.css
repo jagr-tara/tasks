@@ -536,6 +536,43 @@ html:not(.is-authenticated) #appLayout {
   border-color: var(--color-dark);
 }
 
+/* Subproject Chips Row */
+.subproject-selector-row {
+  padding: 0 0 var(--space-4);
+  gap: 6px;
+}
+
+.subproject-selector-row .category-label {
+  font-size: 11px;
+}
+
+.subproject-chip {
+  border: 1px solid var(--color-pill-track);
+  background-color: var(--color-subtle-box);
+  border-radius: var(--radius-full);
+  padding: 3px var(--space-8);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-dark);
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.subproject-chip:hover {
+  border-color: var(--color-dark);
+}
+
+.subproject-chip.active {
+  background-color: var(--color-dark);
+  color: #FFFFFF;
+  border-color: var(--color-dark);
+}
+
 /* Task List */
 .list-card {
   padding: var(--space-16);
@@ -636,6 +673,11 @@ html:not(.is-authenticated) #appLayout {
   padding: 2px 8px;
   border-radius: var(--radius-full);
   width: fit-content;
+}
+
+.tag-subproject {
+  font-weight: 500;
+  color: var(--color-dark);
 }
 
 .edit-input {
@@ -923,10 +965,23 @@ html:not(.is-authenticated) #appLayout {
 .project-items-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-20);
+  gap: var(--space-16);
 }
 
-/* Horizontal Project Row Layout */
+/* Horizontal Project Row Layout & Expandable Breakdown */
+.project-row-item-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding-bottom: var(--space-12);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.project-row-item-wrapper:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
 .project-row-item {
   display: flex;
   align-items: center;
@@ -938,7 +993,7 @@ html:not(.is-authenticated) #appLayout {
 }
 
 .project-row-item:hover {
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
 .project-body-col {
@@ -949,6 +1004,12 @@ html:not(.is-authenticated) #appLayout {
   min-width: 0;
 }
 
+.project-name-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
 .project-name {
   font-size: var(--font-base);
   font-weight: 600;
@@ -956,6 +1017,30 @@ html:not(.is-authenticated) #appLayout {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.subproject-toggle-btn {
+  background: transparent;
+  border: 1px solid var(--color-pill-track);
+  border-radius: var(--radius-full);
+  padding: 1px 6px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.subproject-toggle-btn:hover,
+.subproject-toggle-btn.is-active {
+  color: var(--color-dark);
+  border-color: var(--color-dark);
+  background-color: var(--color-subtle-box);
 }
 
 .progress-track {
@@ -982,8 +1067,9 @@ html:not(.is-authenticated) #appLayout {
   gap: 2px;
 }
 
-.project-hours {
-  font-size: var(--font-sm);
+.project-hours,
+.project-count-stat {
+  font-size: var(--font-xs);
   font-weight: 600;
   color: var(--color-muted);
 }
@@ -992,6 +1078,69 @@ html:not(.is-authenticated) #appLayout {
   font-size: var(--font-xs);
   color: #A8A8A8;
   font-weight: 500;
+}
+
+/* Sub-project Breakdown Container in Performance Slide */
+.subproject-breakdown-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-8) 0 var(--space-4) var(--space-12);
+  border-left: 2px solid var(--color-pill-track);
+  margin-left: 4px;
+  margin-top: 2px;
+}
+
+.subproject-breakdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+
+.subproj-breakdown-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.subproj-breakdown-name {
+  font-size: var(--font-xs);
+  font-weight: 500;
+  color: var(--color-dark);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.subproj-branch-symbol {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+.progress-track-mini {
+  width: 100px;
+  max-width: 100%;
+  height: 3px;
+  background-color: var(--color-progress-track);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.progress-fill-mini {
+  height: 100%;
+  background-color: var(--color-dark);
+  border-radius: var(--radius-full);
+  transition: width 0.3s ease;
+}
+
+.subproj-breakdown-stats {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-muted);
+  white-space: nowrap;
 }
 
 /* Dual Metrics Grid */
@@ -1130,14 +1279,21 @@ html:not(.is-authenticated) #appLayout {
 
 .project-manage-item {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
   padding: var(--space-12) 0;
   border-bottom: 1px solid var(--color-border);
+  gap: var(--space-8);
 }
 
 .project-manage-item:last-child {
   border-bottom: none;
+}
+
+.proj-manage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
 }
 
 .proj-manage-left {
@@ -1156,6 +1312,87 @@ html:not(.is-authenticated) #appLayout {
   display: flex;
   align-items: center;
   gap: var(--space-4);
+}
+
+.btn-xs-action {
+  background: var(--color-subtle-box);
+  border: 1px solid var(--color-pill-track);
+  border-radius: var(--radius-full);
+  padding: 3px 8px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-dark);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-xs-action:hover {
+  background: var(--color-dark);
+  color: #FFFFFF;
+  border-color: var(--color-dark);
+}
+
+.subprojects-manage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: var(--space-16);
+  border-left: 2px solid var(--color-pill-track);
+  margin-left: 4px;
+}
+
+.subproject-manage-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 0;
+}
+
+.subproj-manage-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-xs);
+  color: var(--color-dark);
+  min-width: 0;
+}
+
+.subproj-manage-name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.subproj-count-badge {
+  font-size: 10px;
+  color: var(--color-muted);
+  font-weight: 500;
+}
+
+.icon-btn-xs {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--color-muted);
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.icon-btn-xs:hover {
+  color: var(--color-dark);
+  background-color: var(--color-subtle-box);
+}
+
+.icon-btn-xs.delete-subproj-btn:hover {
+  color: var(--color-error);
 }
 
 .preferences-card {

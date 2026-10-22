@@ -104,17 +104,17 @@
             </button>
           </div>
 
-          <!-- Focused Time Card with Heatmap -->
+          <!-- Productivity Progress Card with Heatmap -->
           <div class="card focus-card">
             <div class="focus-card-header">
-              <span class="metric-label">Focused time</span>
+              <span class="metric-label">Productivity</span>
               <span class="trend-badge" id="trendBadge">
-                <span class="badge-arrow">▲</span> +3.45%
+                <span class="badge-arrow">▲</span> 0%
               </span>
             </div>
             <div class="focus-stat-row">
-              <span class="big-stat" id="focusedTimeValue">32h 40m</span>
-              <span class="comparison-subtext" id="comparisonSubtext">vs. 31h 34m last week</span>
+              <span class="big-stat" id="focusedTimeValue">0%</span>
+              <span class="comparison-subtext" id="comparisonSubtext">0 of 0 tasks done</span>
             </div>
 
             <!-- Activity Matrix / Heatmap Grid -->
@@ -123,16 +123,16 @@
             </div>
           </div>
 
-          <!-- Time by Project Section -->
+          <!-- Projects & Sub-projects Progress Section -->
           <div class="section-container">
             <div class="section-header">
-              <h2 class="section-title">Time by project</h2>
-              <button type="button" class="see-all-btn" id="seeAllProjectsBtn">See all</button>
+              <h2 class="section-title">Projects &amp; Sub-projects</h2>
+              <button type="button" class="see-all-btn" id="seeAllProjectsBtn">Manage</button>
             </div>
 
             <div class="card projects-card">
               <div class="project-items-list" id="projectItemsList">
-                <!-- Dynamically populated from active projects -->
+                <!-- Dynamically populated parent projects & expandable sub-projects -->
               </div>
             </div>
           </div>
@@ -147,21 +147,19 @@
                 </svg>
               </div>
               <span class="metric-sublabel">Tasks done</span>
-              <span class="metric-number" id="tasksDoneCount">18</span>
+              <span class="metric-number" id="tasksDoneCount">0</span>
             </div>
 
-            <!-- Metric 2: Avg Daily Focus -->
+            <!-- Metric 2: Completion Rate -->
             <div class="card metric-card">
-              <div class="metric-icon-badge hourglass-badge" aria-hidden="true">
+              <div class="metric-icon-badge chart-badge" aria-hidden="true">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M5 22h14"></path>
-                  <path d="M5 2h14"></path>
-                  <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"></path>
-                  <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"></path>
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <path d="M12 6v6l4 2"></path>
                 </svg>
               </div>
-              <span class="metric-sublabel">Avg. daily focus</span>
-              <span class="metric-number" id="avgDailyFocusValue">4h 40m</span>
+              <span class="metric-sublabel">Completion rate</span>
+              <span class="metric-number" id="avgDailyFocusValue">0%</span>
             </div>
           </div>
         </section>
@@ -238,6 +236,11 @@
                 <!-- Dynamically rendered project category text chips -->
               </div>
 
+              <!-- Sub-Project Selector Pills (shown when active project has sub-projects) -->
+              <div class="category-selector-row subproject-selector-row hidden" id="taskSubprojectChipsRow" role="radiogroup" aria-label="Select sub-project">
+                <!-- Dynamically rendered sub-project text chips -->
+              </div>
+
               <!-- Input with button -->
               <div class="input-with-button">
                 <input
@@ -283,14 +286,16 @@
               <button type="button" class="btn-sm-action" id="openAddProjectBtn">+ Add Project</button>
             </div>
 
-            <!-- Add / Edit Project Card Form (Text only, no emoji picker) -->
+            <!-- Add / Edit Project Card Form (Supports Project and Sub-project) -->
             <div class="card project-form-card hidden" id="projectFormCard">
               <h3 class="form-card-title" id="projectFormTitle">New Project</h3>
               <form id="projectForm" class="project-form">
                 <input type="hidden" id="editProjectId" value="" />
+                <input type="hidden" id="editParentProjectId" value="" />
+                <input type="hidden" id="editSubprojectName" value="" />
 
                 <div class="form-group">
-                  <label class="form-label" for="projectNameInput">Project Name</label>
+                  <label class="form-label" id="projectNameLabel" for="projectNameInput">Project Name</label>
                   <input
                     type="text"
                     id="projectNameInput"
@@ -311,7 +316,7 @@
             <!-- Projects List Card -->
             <div class="card projects-manage-card">
               <div class="projects-manage-list" id="settingsProjectsList">
-                <!-- Dynamically rendered project items (text only) -->
+                <!-- Dynamically rendered project and sub-project items -->
               </div>
             </div>
           </div>
@@ -328,14 +333,6 @@
                   <span class="pref-desc">Cloudflare D1 &bull; Active Connection</span>
                 </div>
                 <span class="badge-pill-subtle">Online</span>
-              </div>
-              <div class="pref-divider"></div>
-              <div class="pref-row">
-                <div class="pref-info">
-                  <span class="pref-title">Default Projects</span>
-                  <span class="pref-desc">Reset projects to initial defaults</span>
-                </div>
-                <button type="button" class="btn-text-danger" id="resetProjectsBtn">Reset</button>
               </div>
             </div>
           </div>
@@ -393,6 +390,6 @@
     </nav>
   </div>
 
-  <script src="app.js?v=20261022-2"></script>
+  <script src="app.js?v=20261022-3"></script>
 </body>
 </html>
