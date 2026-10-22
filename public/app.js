@@ -6,43 +6,25 @@
   'use strict';
 
   const API_ENDPOINT = '/api/todos';
+  const PROJECTS_API_ENDPOINT = '/api/projects';
   const AUTH_STORAGE_KEY = 'app_password';
   const LOCAL_CACHE_KEY = 'offline_todos_cache';
-  const PROJECTS_STORAGE_KEY = 'app_custom_projects';
-
-  // Default Projects Preset (Text only with sub-projects and groups)
-  const DEFAULT_PROJECTS = [
-    {
-      id: 'proj-1',
-      name: 'Decision making',
-      group: 'Management',
-      subprojects: ['Roadmap', 'Strategy'],
-    },
-    {
-      id: 'proj-2',
-      name: 'Design system',
-      group: 'Product',
-      subprojects: ['Components', 'Typography'],
-    },
-    {
-      id: 'proj-3',
-      name: 'Exploration phase',
-      group: 'Product',
-      subprojects: ['Prototypes'],
-    },
-  ];
 
   // Application State
   const state = {
     todos: [],
-    projects: loadStoredProjects(),
+    rawProjects: [],
+    projects: [],
     filter: 'all', // 'all' | 'active' | 'completed'
     isLoading: true,
+    isProjectsLoading: false,
     isSubmitting: false,
     editingId: null,
     activeSlide: 0, // 0 = Performance, 1 = Tasks, 2 = Settings
     selectedCategory: '',
+    selectedProjectId: null,
     selectedSubproject: null,
+    selectedSubprojectId: null,
     expandedProjects: new Set(),
     activePeriod: 'week', // 'week' | 'month' | 'year'
     bannerTimeout: null,
@@ -128,39 +110,45 @@
     syncStatus: document.getElementById('syncStatus'),
   };
 
-  // ================= PROJECT STORAGE & HELPERS =================
-  function loadStoredProjects() {
+  // ================= PROJECTS API & HELPERS =================
+  async function fetchProjects() {
+    state.isProjectsLoading = true;
     try {
-      const saved = localStorage.getItem(PROJECTS_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((p, idx) => ({
-            id: p.id || `proj-${idx + 1}`,
-            name: p.name,
-            group: (p.group || 'General').trim(),
-            subprojects: Array.isArray(p.subprojects) ? p.subprojects : [],
-          }));
-        }
-      }
-    } catch {
-      // fallback
-    }
-    return JSON.parse(JSON.stringify(DEFAULT_PROJECTS));
-  }
+      const data = await apiRequest(PROJECTS_API_ENDPOINT, { method: 'GET' });
+      const raw = Array.isArray(data.projects) ? data.projects : [];
+      state.rawProjects = raw;
 
-  function saveStoredProjects() {
-    try {
-      localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(state.projects));
-    } catch {
-      // ignore
+      // Group sub-projects under their parent project matching parent_id
+      const parents = raw.filter((p) => p.parent_id === null || p.parent_id === undefined);
+      const children = raw.filter((p) => p.parent_id !== null && p.parent_id !== undefined);
+
+      state.projects = parents.map((parent) => {
+        const parentSubprojects = children.filter((c) => Number(c.parent_id) === Number(parent.id));
+        return {
+          id: parent.id,
+          name: parent.name,
+          group: (parent.group_name || 'General').trim(),
+          group_name: (parent.group_name || 'General').trim(),
+          parent_id: null,
+          subprojects: parentSubprojects,
+        };
+      });
+
+      renderProjectsUI();
+      render();
+    } catch (error) {
+      if (error.message !== 'Unauthorized') {
+        showBanner(`Failed to load projects: ${error.message}`);
+      }
+    } finally {
+      state.isProjectsLoading = false;
     }
   }
 
   function getUniqueGroups() {
     const groups = [];
     state.projects.forEach((p) => {
-      const g = (p.group || 'General').trim();
+      const g = (p.group || p.group_name || 'General').trim();
       if (!groups.includes(g)) groups.push(g);
     });
     return groups.length > 0 ? groups : ['General'];
@@ -170,7 +158,7 @@
     const groups = getUniqueGroups();
     return groups.map((group) => ({
       group,
-      projects: state.projects.filter((p) => (p.group || 'General').trim().toLowerCase() === group.toLowerCase()),
+      projects: state.projects.filter((p) => (p.group || p.group_name || 'General').trim().toLowerCase() === group.toLowerCase()),
     })).filter((g) => g.projects.length > 0);
   }
 
@@ -187,13 +175,12 @@
 
     const reordered = [];
     newGroups.forEach((g) => {
-      state.projects.filter((p) => (p.group || 'General').trim().toLowerCase() === g.toLowerCase()).forEach((p) => reordered.push(p));
+      state.projects.filter((p) => (p.group || p.group_name || 'General').trim().toLowerCase() === g.toLowerCase()).forEach((p) => reordered.push(p));
     });
     state.projects.forEach((p) => {
       if (!reordered.includes(p)) reordered.push(p);
     });
     state.projects = reordered;
-    saveStoredProjects();
     renderProjectsUI();
     render();
   }
@@ -201,8 +188,8 @@
   function moveProjectInGroup(projId, delta) {
     const proj = state.projects.find((p) => p.id === projId);
     if (!proj) return;
-    const group = (proj.group || 'General').trim().toLowerCase();
-    const groupProjects = state.projects.filter((p) => (p.group || 'General').trim().toLowerCase() === group);
+    const group = (proj.group || proj.group_name || 'General').trim().toLowerCase();
+    const groupProjects = state.projects.filter((p) => (p.group || p.group_name || 'General').trim().toLowerCase() === group);
     const currIdxInGroup = groupProjects.findIndex((p) => p.id === projId);
     const targetIdxInGroup = currIdxInGroup + delta;
     if (targetIdxInGroup < 0 || targetIdxInGroup >= groupProjects.length) return;
@@ -216,7 +203,6 @@
     state.projects[indexA] = state.projects[indexB];
     state.projects[indexB] = temp;
 
-    saveStoredProjects();
     renderProjectsUI();
     render();
   }
@@ -229,13 +215,15 @@
     const temp = parent.subprojects[subIndex];
     parent.subprojects[subIndex] = parent.subprojects[target];
     parent.subprojects[target] = temp;
-    saveStoredProjects();
     renderProjectsUI();
     render();
   }
 
   function getProjectByName(name) {
-    return state.projects.find((p) => p.name.toLowerCase() === name.toLowerCase());
+    if (!name) return null;
+    const lower = name.toLowerCase();
+    return state.projects.find((p) => p.name.toLowerCase() === lower) ||
+      state.rawProjects.find((p) => p.name.toLowerCase() === lower);
   }
 
   // ================= LOCAL FALLBACK STORAGE FOR TODOS =================
@@ -324,6 +312,33 @@
 
   // ================= UTILITIES & PARSERS =================
   function parseTask(task) {
+    if (task.project_id && state.rawProjects.length > 0) {
+      const proj = state.rawProjects.find((p) => Number(p.id) === Number(task.project_id));
+      if (proj) {
+        const rawTitle = (task.title || '').trim();
+        const match = rawTitle.match(/^\[(.*?)\]\s*(.*)$/);
+        const cleanTitle = match ? match[2] : rawTitle;
+
+        if (proj.parent_id) {
+          const parent = state.rawProjects.find((p) => Number(p.id) === Number(proj.parent_id));
+          return {
+            category: parent ? parent.name : proj.group_name || 'General',
+            categoryId: parent ? parent.id : null,
+            subproject: proj.name,
+            subprojectId: proj.id,
+            cleanTitle,
+          };
+        }
+        return {
+          category: proj.name,
+          categoryId: proj.id,
+          subproject: null,
+          subprojectId: null,
+          cleanTitle,
+        };
+      }
+    }
+
     const rawTitle = (task.title || '').trim();
     const match = rawTitle.match(/^\[(.*?)\]\s*(.*)$/);
 
@@ -338,7 +353,9 @@
         const proj = getProjectByName(parentName);
         return {
           category: proj ? proj.name : parentName,
+          categoryId: proj ? proj.id : null,
           subproject: subName || null,
+          subprojectId: null,
           cleanTitle,
         };
       }
@@ -346,15 +363,19 @@
       const proj = getProjectByName(tagContent);
       return {
         category: proj ? proj.name : tagContent,
+        categoryId: proj ? proj.id : null,
         subproject: null,
+        subprojectId: null,
         cleanTitle,
       };
     }
 
     const defaultProj = state.projects[0] || { name: 'General', subprojects: [] };
     return {
-      category: defaultProj.name,
+      category: defaultProj.name || 'General',
+      categoryId: defaultProj.id || null,
       subproject: null,
+      subprojectId: null,
       cleanTitle: rawTitle,
     };
   }
@@ -449,6 +470,36 @@
 
   function simulateOfflineRequest(url, options) {
     const method = (options.method || 'GET').toUpperCase();
+
+    if (url.includes('/api/projects')) {
+      if (method === 'GET') {
+        return { projects: state.rawProjects };
+      }
+      if (method === 'POST') {
+        const payload = JSON.parse(options.body || '{}');
+        const newProj = {
+          id: Date.now(),
+          name: payload.name || 'New Project',
+          group_name: payload.group_name || null,
+          parent_id: payload.parent_id || null,
+        };
+        state.rawProjects.push(newProj);
+        return { project: newProj };
+      }
+      if (method === 'PUT') {
+        const payload = JSON.parse(options.body || '{}');
+        state.rawProjects = state.rawProjects.map((p) => (p.id === payload.id ? { ...p, ...payload } : p));
+        return { project: payload };
+      }
+      if (method === 'DELETE') {
+        const urlObj = new URL(url, 'http://localhost');
+        const id = Number(urlObj.searchParams.get('id'));
+        state.rawProjects = state.rawProjects.filter((p) => p.id !== id && p.parent_id !== id);
+        return { success: true, id };
+      }
+      return {};
+    }
+
     let cached = getCachedTodos();
 
     if (method === 'GET') {
@@ -462,6 +513,7 @@
         title: payload.title || 'Untitled Task',
         completed: 0,
         created_at: new Date().toISOString(),
+        project_id: payload.project_id || null,
       };
       cached.unshift(newTodo);
       setCachedTodos(cached);
@@ -477,6 +529,7 @@
             ...t,
             ...(payload.title !== undefined ? { title: payload.title } : {}),
             ...(payload.completed !== undefined ? { completed: payload.completed ? 1 : 0 } : {}),
+            ...(payload.project_id !== undefined ? { project_id: payload.project_id } : {}),
           };
           return updatedTodo;
         }
@@ -530,15 +583,30 @@
     elements.btnSpinner.classList.remove('hidden');
     setSyncing(true, 'Adding...');
 
-    const category = state.selectedCategory || (state.projects[0] ? state.projects[0].name : 'General');
+    const curProj = state.projects.find((p) => p.name === state.selectedCategory);
+    const category = state.selectedCategory || (curProj ? curProj.name : 'General');
     const subproject = state.selectedSubproject;
     const tag = subproject ? `[${category} / ${subproject}]` : `[${category}]`;
     const formattedTitle = `${tag} ${cleanTitle}`;
 
+    // Resolve project_id (subproject if selected, otherwise parent project)
+    let projectId = null;
+    if (subproject && curProj && Array.isArray(curProj.subprojects)) {
+      const matchedSub = curProj.subprojects.find(
+        (s) => (typeof s === 'string' ? s : s.name).toLowerCase() === subproject.toLowerCase()
+      );
+      if (matchedSub && typeof matchedSub === 'object' && matchedSub.id) {
+        projectId = matchedSub.id;
+      }
+    }
+    if (!projectId && curProj && curProj.id) {
+      projectId = curProj.id;
+    }
+
     try {
       const data = await apiRequest(API_ENDPOINT, {
         method: 'POST',
-        body: JSON.stringify({ title: formattedTitle }),
+        body: JSON.stringify({ title: formattedTitle, project_id: projectId }),
       });
 
       if (data.todo) {
@@ -602,10 +670,13 @@
       finalTitle = `${tag} ${trimmed}`;
     }
 
+    const existing = state.todos.find((t) => t.id === id);
+    const currentProjectId = existing ? existing.project_id : null;
+
     try {
       const data = await apiRequest(API_ENDPOINT, {
         method: 'PUT',
-        body: JSON.stringify({ id, title: finalTitle }),
+        body: JSON.stringify({ id, title: finalTitle, project_id: currentProjectId }),
       });
 
       const updated = data.todo;
@@ -769,11 +840,13 @@
     // Ensure selectedCategory is valid
     if (!state.projects.some((p) => p.name === state.selectedCategory)) {
       state.selectedCategory = state.projects[0] ? state.projects[0].name : '';
+      state.selectedProjectId = state.projects[0] ? state.projects[0].id : null;
     }
 
     const curProj = state.projects.find((p) => p.name === state.selectedCategory);
-    if (!curProj || !Array.isArray(curProj.subprojects) || !curProj.subprojects.includes(state.selectedSubproject)) {
+    if (!curProj || !Array.isArray(curProj.subprojects) || !curProj.subprojects.some((s) => (typeof s === 'string' ? s : s.name) === state.selectedSubproject)) {
       state.selectedSubproject = null;
+      state.selectedSubprojectId = null;
     }
 
     // Populate Group Suggestions Datalist in Settings Form
@@ -813,13 +886,16 @@
           const isSelected = proj.name === state.selectedCategory;
           chip.className = `category-chip ${isSelected ? 'active' : ''}`;
           chip.dataset.category = proj.name;
+          chip.dataset.id = proj.id;
           chip.setAttribute('role', 'radio');
           chip.setAttribute('aria-checked', isSelected ? 'true' : 'false');
           chip.textContent = proj.name;
 
           chip.addEventListener('click', () => {
             state.selectedCategory = proj.name;
+            state.selectedProjectId = proj.id;
             state.selectedSubproject = null;
+            state.selectedSubprojectId = null;
             renderProjectsUI();
           });
 
@@ -853,12 +929,15 @@
         allChip.textContent = 'General';
         allChip.addEventListener('click', () => {
           state.selectedSubproject = null;
+          state.selectedSubprojectId = null;
           renderProjectsUI();
         });
         chipsSet.appendChild(allChip);
 
         // Specific subproject chips
-        curProj.subprojects.forEach((subName) => {
+        curProj.subprojects.forEach((sub) => {
+          const subName = typeof sub === 'string' ? sub : sub.name;
+          const subId = typeof sub === 'object' ? sub.id : null;
           const subChip = document.createElement('button');
           subChip.type = 'button';
           const isSubActive = state.selectedSubproject === subName;
@@ -866,6 +945,7 @@
           subChip.textContent = subName;
           subChip.addEventListener('click', () => {
             state.selectedSubproject = subName;
+            state.selectedSubprojectId = subId;
             renderProjectsUI();
           });
           chipsSet.appendChild(subChip);
@@ -921,7 +1001,12 @@
 
         // Projects under this group
         projects.forEach((proj, pIdx) => {
-          const projTasks = state.todos.filter((t) => parseTask(t).category.toLowerCase() === proj.name.toLowerCase());
+          const projTasks = state.todos.filter((t) => {
+            if (t.project_id && (Number(t.project_id) === Number(proj.id) || (proj.subprojects && proj.subprojects.some((s) => Number(s.id) === Number(t.project_id))))) {
+              return true;
+            }
+            return parseTask(t).category.toLowerCase() === proj.name.toLowerCase();
+          });
           const projCompleted = projTasks.filter((t) => Boolean(t.completed)).length;
           const subprojects = Array.isArray(proj.subprojects) ? proj.subprojects : [];
 
@@ -993,8 +1078,13 @@
             const subListEl = document.createElement('div');
             subListEl.className = 'subprojects-manage-list';
 
-            subprojects.forEach((subName, sIdx) => {
-              const subTasks = projTasks.filter((t) => (parseTask(t).subproject || '').toLowerCase() === subName.toLowerCase());
+            subprojects.forEach((sub, sIdx) => {
+              const subName = typeof sub === 'string' ? sub : sub.name;
+              const subId = typeof sub === 'object' ? sub.id : null;
+              const subTasks = projTasks.filter((t) => {
+                if (subId && Number(t.project_id) === Number(subId)) return true;
+                return (parseTask(t).subproject || '').toLowerCase() === subName.toLowerCase();
+              });
               const subDone = subTasks.filter((t) => Boolean(t.completed)).length;
               const canMoveSubUp = sIdx > 0;
               const canMoveSubDown = sIdx < subprojects.length - 1;
@@ -1041,11 +1131,11 @@
               }
 
               subItem.querySelector('.edit-subproj-btn').addEventListener('click', () => {
-                openEditProjectForm(null, proj, subName);
+                openEditProjectForm(null, proj, sub);
               });
 
               subItem.querySelector('.delete-subproj-btn').addEventListener('click', () => {
-                handleDeleteSubproject(proj.id, subName);
+                handleDeleteProject(subId || sub.id);
               });
 
               subListEl.appendChild(subItem);
@@ -1062,13 +1152,16 @@
     renderPerformanceMetrics();
   }
 
-  function openEditProjectForm(proj = null, parentProj = null, subName = null) {
+  function openEditProjectForm(proj = null, parentProj = null, subproj = null) {
     if (!elements.projectFormCard) return;
     elements.projectFormCard.classList.remove('hidden');
 
     if (parentProj) {
       // Sub-project mode
-      elements.editProjectId.value = '';
+      const subName = subproj ? (typeof subproj === 'string' ? subproj : subproj.name) : '';
+      const subId = subproj && typeof subproj === 'object' ? subproj.id : '';
+
+      elements.editProjectId.value = subId || '';
       elements.editParentProjectId.value = parentProj.id;
       elements.editSubprojectName.value = subName || '';
       if (elements.projectNameLabel) {
@@ -1088,7 +1181,7 @@
       elements.projectNameInput.placeholder = 'e.g. Mobile Architecture';
       elements.projectNameInput.value = proj.name;
       if (elements.projectGroupFieldGroup) elements.projectGroupFieldGroup.classList.remove('hidden');
-      if (elements.projectGroupInput) elements.projectGroupInput.value = proj.group || 'General';
+      if (elements.projectGroupInput) elements.projectGroupInput.value = proj.group_name || proj.group || 'General';
     } else {
       // New Parent Project
       elements.editProjectId.value = '';
@@ -1116,128 +1209,107 @@
     if (elements.projectGroupInput) elements.projectGroupInput.value = '';
   }
 
-  function handleSaveProject(event) {
+  async function handleSaveProject(event) {
     event.preventDefault();
     const name = elements.projectNameInput.value.trim();
     const editId = elements.editProjectId.value;
     const parentProjId = elements.editParentProjectId.value;
-    const editSubName = elements.editSubprojectName.value;
     const group = (elements.projectGroupInput ? elements.projectGroupInput.value.trim() : '') || 'General';
 
     if (!name) return;
 
-    if (parentProjId) {
-      // Sub-project addition / modification
-      const parent = state.projects.find((p) => p.id === parentProjId);
-      if (!parent) return;
-      if (!Array.isArray(parent.subprojects)) parent.subprojects = [];
+    setSyncing(true, 'Saving project...');
+    try {
+      if (parentProjId) {
+        // Sub-project mode
+        const parent = state.projects.find((p) => String(p.id) === String(parentProjId));
+        const parentGroup = parent ? (parent.group_name || parent.group || group) : group;
 
-      if (editSubName) {
-        // Edit existing subproject
-        parent.subprojects = parent.subprojects.map((s) => (s.toLowerCase() === editSubName.toLowerCase() ? name : s));
-        state.todos = state.todos.map((t) => {
-          const parsed = parseTask(t);
-          if (parsed.category.toLowerCase() === parent.name.toLowerCase() && (parsed.subproject || '').toLowerCase() === editSubName.toLowerCase()) {
-            return { ...t, title: `[${parent.name} / ${name}] ${parsed.cleanTitle}` };
-          }
-          return t;
-        });
-        showBanner('Sub-project updated successfully.', 'info');
-      } else {
-        // Add new subproject
-        if (parent.subprojects.some((s) => s.toLowerCase() === name.toLowerCase())) {
-          showBanner(`Sub-project "${name}" already exists in ${parent.name}.`);
-          return;
+        if (editId) {
+          // Edit existing subproject
+          await apiRequest(PROJECTS_API_ENDPOINT, {
+            method: 'PUT',
+            body: JSON.stringify({
+              id: Number(editId),
+              name,
+              parent_id: Number(parentProjId),
+              group_name: parentGroup,
+            }),
+          });
+          showBanner('Sub-project updated successfully.', 'info');
+        } else {
+          // Add new subproject
+          await apiRequest(PROJECTS_API_ENDPOINT, {
+            method: 'POST',
+            body: JSON.stringify({
+              name,
+              parent_id: Number(parentProjId),
+              group_name: parentGroup,
+            }),
+          });
+          showBanner('Sub-project added successfully.', 'info');
         }
-        parent.subprojects.push(name);
-        showBanner('Sub-project added successfully.', 'info');
-      }
-    } else if (editId) {
-      // Edit existing main project
-      const existing = state.projects.find((p) => p.id === editId);
-      if (existing) {
-        const oldName = existing.name;
-        existing.name = name;
-        existing.group = group;
-
-        // Update existing task titles to match new project name
-        state.todos = state.todos.map((t) => {
-          const parsed = parseTask(t);
-          if (parsed.category.toLowerCase() === oldName.toLowerCase()) {
-            const subTag = parsed.subproject ? ` / ${parsed.subproject}` : '';
-            return { ...t, title: `[${name}${subTag}] ${parsed.cleanTitle}` };
-          }
-          return t;
+      } else if (editId) {
+        // Edit existing main project
+        await apiRequest(PROJECTS_API_ENDPOINT, {
+          method: 'PUT',
+          body: JSON.stringify({
+            id: Number(editId),
+            name,
+            group_name: group,
+            parent_id: null,
+          }),
         });
         showBanner('Project updated successfully.', 'info');
-      }
-    } else {
-      // Add new main project
-      if (getProjectByName(name)) {
-        showBanner(`A project named "${name}" already exists.`);
-        return;
+      } else {
+        // Add new main project
+        await apiRequest(PROJECTS_API_ENDPOINT, {
+          method: 'POST',
+          body: JSON.stringify({
+            name,
+            group_name: group,
+            parent_id: null,
+          }),
+        });
+        state.selectedCategory = name;
+        showBanner('New project added.', 'info');
       }
 
-      state.projects.push({
-        id: `proj-${Date.now()}`,
-        name,
-        group,
-        subprojects: [],
-      });
-      state.selectedCategory = name;
-      showBanner('New project added.', 'info');
+      closeProjectForm();
+      await fetchProjects();
+    } catch (error) {
+      if (error.message !== 'Unauthorized') {
+        showBanner(`Could not save project: ${error.message}`);
+      }
+    } finally {
+      setSyncing(false);
     }
-
-    saveStoredProjects();
-    closeProjectForm();
-    renderProjectsUI();
-    render();
   }
 
-  function handleDeleteProject(id) {
-    if (state.projects.length <= 1) {
+  async function handleDeleteProject(id) {
+    if (state.rawProjects.length <= 1) {
       showBanner('At least one project must be retained.');
       return;
     }
 
-    const proj = state.projects.find((p) => p.id === id);
-    if (!proj) return;
-
-    state.projects = state.projects.filter((p) => p.id !== id);
-    if (state.selectedCategory === proj.name) {
-      state.selectedCategory = state.projects[0] ? state.projects[0].name : '';
-      state.selectedSubproject = null;
+    setSyncing(true, 'Removing...');
+    try {
+      await apiRequest(`${PROJECTS_API_ENDPOINT}?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      await fetchProjects();
+      showBanner('Project removed.', 'info');
+    } catch (error) {
+      if (error.message !== 'Unauthorized') {
+        showBanner(`Could not delete project: ${error.message}`);
+      }
+    } finally {
+      setSyncing(false);
     }
-
-    saveStoredProjects();
-    renderProjectsUI();
-    render();
-    showBanner(`Project "${proj.name}" removed.`, 'info');
   }
 
-  function handleDeleteSubproject(parentProjId, subName) {
-    const parent = state.projects.find((p) => p.id === parentProjId);
-    if (!parent || !Array.isArray(parent.subprojects)) return;
-
-    parent.subprojects = parent.subprojects.filter((s) => s.toLowerCase() !== subName.toLowerCase());
-
-    // Update tasks under this subproject to just parent
-    state.todos = state.todos.map((t) => {
-      const parsed = parseTask(t);
-      if (parsed.category.toLowerCase() === parent.name.toLowerCase() && (parsed.subproject || '').toLowerCase() === subName.toLowerCase()) {
-        return { ...t, title: `[${parent.name}] ${parsed.cleanTitle}` };
-      }
-      return t;
-    });
-
-    if (state.selectedSubproject && state.selectedSubproject.toLowerCase() === subName.toLowerCase()) {
-      state.selectedSubproject = null;
-    }
-
-    saveStoredProjects();
-    renderProjectsUI();
-    render();
-    showBanner(`Sub-project "${subName}" removed.`, 'info');
+  function handleDeleteSubproject(parentProjId, subIdOrName) {
+    return handleDeleteProject(subIdOrName);
   }
 
   // ================= PERFORMANCE METRICS COMPUTATION =================
@@ -1281,7 +1353,12 @@
       }
 
       projects.forEach((proj) => {
-        const projectTasks = state.todos.filter((t) => parseTask(t).category.toLowerCase() === proj.name.toLowerCase());
+        const projectTasks = state.todos.filter((t) => {
+          if (t.project_id && (Number(t.project_id) === Number(proj.id) || (proj.subprojects && proj.subprojects.some((s) => Number(s.id) === Number(t.project_id))))) {
+            return true;
+          }
+          return parseTask(t).category.toLowerCase() === proj.name.toLowerCase();
+        });
         const projTotal = projectTasks.length;
         const projCompleted = projectTasks.filter((t) => Boolean(t.completed)).length;
         const projPct = projTotal > 0 ? Math.round((projCompleted / projTotal) * 100) : 0;
@@ -1316,7 +1393,9 @@
 
         row.querySelector('.project-name').addEventListener('click', () => {
           state.selectedCategory = proj.name;
+          state.selectedProjectId = proj.id;
           state.selectedSubproject = null;
+          state.selectedSubprojectId = null;
           goToSlide(1);
         });
 
@@ -1342,8 +1421,13 @@
           const breakdownEl = document.createElement('div');
           breakdownEl.className = 'subproject-breakdown-container';
 
-          subprojects.forEach((subName) => {
-            const subTasks = projectTasks.filter((t) => (parseTask(t).subproject || '').toLowerCase() === subName.toLowerCase());
+          subprojects.forEach((sub) => {
+            const subName = typeof sub === 'string' ? sub : sub.name;
+            const subId = typeof sub === 'object' ? sub.id : null;
+            const subTasks = projectTasks.filter((t) => {
+              if (subId && Number(t.project_id) === Number(subId)) return true;
+              return (parseTask(t).subproject || '').toLowerCase() === subName.toLowerCase();
+            });
             const subTotal = subTasks.length;
             const subDone = subTasks.filter((t) => Boolean(t.completed)).length;
             const subPct = subTotal > 0 ? Math.round((subDone / subTotal) * 100) : 0;
@@ -1365,7 +1449,9 @@
             subItem.style.cursor = 'pointer';
             subItem.addEventListener('click', () => {
               state.selectedCategory = proj.name;
+              state.selectedProjectId = proj.id;
               state.selectedSubproject = subName;
+              state.selectedSubprojectId = subId;
               goToSlide(1);
             });
 
@@ -1577,7 +1663,7 @@
       setStoredPassword(enteredPassword);
 
       try {
-        await fetchTodos();
+        await Promise.all([fetchProjects(), fetchTodos()]);
         hideAuthPrompt();
       } catch {
         // 401 triggers clearStoredPassword & showAuthPrompt
@@ -1590,6 +1676,8 @@
     elements.lockBtn.addEventListener('click', () => {
       clearStoredPassword();
       state.todos = [];
+      state.projects = [];
+      state.rawProjects = [];
       showAuthPrompt();
     });
 
@@ -1597,6 +1685,8 @@
       elements.settingsLockBtn.addEventListener('click', () => {
         clearStoredPassword();
         state.todos = [];
+        state.projects = [];
+        state.rawProjects = [];
         showAuthPrompt();
       });
     }
@@ -1707,7 +1797,7 @@
         showAuthPrompt();
       } else {
         hideAuthPrompt();
-        fetchTodos();
+        Promise.all([fetchProjects(), fetchTodos()]);
       }
     } catch (err) {
       console.error('Initialization error:', err);
