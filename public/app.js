@@ -661,29 +661,33 @@
     }
 
     // 1. Render Category Chips on Tasks Page (Text only, wraps into new row)
-    elements.taskCategoryChipsRow.innerHTML = '<span class="category-label">Project:</span>';
-    state.projects.forEach((proj) => {
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      const isSelected = proj.name === state.selectedCategory;
-      chip.className = `category-chip ${isSelected ? 'active' : ''}`;
-      chip.dataset.category = proj.name;
-      chip.setAttribute('role', 'radio');
-      chip.setAttribute('aria-checked', isSelected ? 'true' : 'false');
-      chip.textContent = proj.name;
+    if (elements.taskCategoryChipsRow) {
+      elements.taskCategoryChipsRow.innerHTML = '<span class="category-label">Project:</span>';
+      state.projects.forEach((proj) => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        const isSelected = proj.name === state.selectedCategory;
+        chip.className = `category-chip ${isSelected ? 'active' : ''}`;
+        chip.dataset.category = proj.name;
+        chip.setAttribute('role', 'radio');
+        chip.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+        chip.textContent = proj.name;
 
-      chip.addEventListener('click', () => {
-        elements.taskCategoryChipsRow.querySelectorAll('.category-chip').forEach((c) => {
-          c.classList.remove('active');
-          c.setAttribute('aria-checked', 'false');
+        chip.addEventListener('click', () => {
+          if (elements.taskCategoryChipsRow) {
+            elements.taskCategoryChipsRow.querySelectorAll('.category-chip').forEach((c) => {
+              c.classList.remove('active');
+              c.setAttribute('aria-checked', 'false');
+            });
+          }
+          chip.classList.add('active');
+          chip.setAttribute('aria-checked', 'true');
+          state.selectedCategory = proj.name;
         });
-        chip.classList.add('active');
-        chip.setAttribute('aria-checked', 'true');
-        state.selectedCategory = proj.name;
-      });
 
-      elements.taskCategoryChipsRow.appendChild(chip);
-    });
+        elements.taskCategoryChipsRow.appendChild(chip);
+      });
+    }
 
     // 2. Render Projects List on Settings Page (Text only)
     elements.settingsProjectsList.innerHTML = '';
@@ -1071,48 +1075,64 @@
     }
 
     // Add Todo Form
-    elements.form.addEventListener('submit', handleAddTodo);
+    if (elements.form) elements.form.addEventListener('submit', handleAddTodo);
 
     // Task Filter Tabs
-    elements.filterTabs.forEach((tab) => {
-      tab.addEventListener('click', () => setFilter(tab.dataset.filter));
-    });
+    if (elements.filterTabs) {
+      elements.filterTabs.forEach((tab) => {
+        tab.addEventListener('click', () => setFilter(tab.dataset.filter));
+      });
+    }
 
     // Clear Completed Button
-    elements.clearCompletedBtn.addEventListener('click', handleClearCompleted);
+    if (elements.clearCompletedBtn) {
+      elements.clearCompletedBtn.addEventListener('click', handleClearCompleted);
+    }
 
     // Banner Close
-    elements.bannerClose.addEventListener('click', hideBanner);
+    if (elements.bannerClose) {
+      elements.bannerClose.addEventListener('click', hideBanner);
+    }
 
     // Performance Period Segmented Control (Week / Month / Year)
-    elements.periodTabs.forEach((tab) => {
-      tab.addEventListener('click', () => {
-        elements.periodTabs.forEach((t) => {
-          t.classList.remove('active');
-          t.setAttribute('aria-selected', 'false');
+    if (elements.periodTabs) {
+      elements.periodTabs.forEach((tab) => {
+        tab.addEventListener('click', () => {
+          elements.periodTabs.forEach((t) => {
+            t.classList.remove('active');
+            t.setAttribute('aria-selected', 'false');
+          });
+          tab.classList.add('active');
+          tab.setAttribute('aria-selected', 'true');
+          state.activePeriod = tab.dataset.period;
+          renderPerformanceMetrics();
         });
-        tab.classList.add('active');
-        tab.setAttribute('aria-selected', 'true');
-        state.activePeriod = tab.dataset.period;
-        renderPerformanceMetrics();
       });
-    });
+    }
 
     // ================= BOTTOM DOCK ACTIONS =================
     // 1. Left Button: Performance Dashboard
-    elements.navPerformanceBtn.addEventListener('click', () => goToSlide(0));
+    if (elements.navPerformanceBtn) {
+      elements.navPerformanceBtn.addEventListener('click', () => goToSlide(0));
+    }
 
     // 2. Middle Plus Button: Tasks Management & Add Task
-    elements.fabAddBtn.addEventListener('click', () => {
-      goToSlide(1);
-      setTimeout(() => {
-        elements.taskInput.focus();
-        elements.taskInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 150);
-    });
+    if (elements.fabAddBtn) {
+      elements.fabAddBtn.addEventListener('click', () => {
+        goToSlide(1);
+        setTimeout(() => {
+          if (elements.taskInput) {
+            elements.taskInput.focus();
+            elements.taskInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 150);
+      });
+    }
 
     // 3. Right Button: Settings & Projects
-    elements.navSettingsBtn.addEventListener('click', () => goToSlide(2));
+    if (elements.navSettingsBtn) {
+      elements.navSettingsBtn.addEventListener('click', () => goToSlide(2));
+    }
 
     // Performance Page Shortcuts
     if (elements.cardTasksDone) {
@@ -1124,15 +1144,23 @@
     }
 
     // ================= SETTINGS: PROJECT ACTIONS =================
-    elements.openAddProjectBtn.addEventListener('click', () => {
-      openEditProjectForm(null);
-    });
+    if (elements.openAddProjectBtn) {
+      elements.openAddProjectBtn.addEventListener('click', () => {
+        openEditProjectForm(null);
+      });
+    }
 
-    elements.cancelProjectBtn.addEventListener('click', closeProjectForm);
-    elements.projectForm.addEventListener('submit', handleSaveProject);
+    if (elements.cancelProjectBtn) {
+      elements.cancelProjectBtn.addEventListener('click', closeProjectForm);
+    }
+    if (elements.projectForm) {
+      elements.projectForm.addEventListener('submit', handleSaveProject);
+    }
 
     // Reset Projects Button
-    elements.resetProjectsBtn.addEventListener('click', handleResetDefaultProjects);
+    if (elements.resetProjectsBtn) {
+      elements.resetProjectsBtn.addEventListener('click', handleResetDefaultProjects);
+    }
 
     initSwipeGestures();
   }
