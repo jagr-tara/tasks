@@ -62,6 +62,12 @@ The user interface follows a single-page, 3-slide horizontal viewport design wit
   - Center FAB: Tasks Management (`#fabAddBtn`, slide 1).
   - Right Item: Settings & Projects (`#navSettingsBtn`, slide 2).
 
+### Multi-Device Sync Architecture (Sync on Focus)
+- **Page Visibility & Window Focus:** The client application registers event listeners on `document.visibilitychange` and `window.focus`.
+- **Silent Background Revalidation:** When `document.visibilityState === 'visible'` or the window regains focus, the app automatically and silently triggers `/api/projects` and `/api/todos` revalidation.
+- **Graceful UI Updates:** Prevents page reloads (`location.reload()`) and suppresses full skeleton loader flashes, gracefully updating tasks and project progress in place.
+- **Request Throttling:** Guarded by a 2000ms timestamp threshold and an in-flight synchronization lock to prevent duplicate concurrent network fetches.
+
 ---
 
 ## 2. Database Schema (Cloudflare D1)

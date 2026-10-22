@@ -551,11 +551,13 @@
   }
 
   // ================= CRUD OPERATIONS =================
-  async function fetchTodos() {
-    state.isLoading = true;
-    elements.loadingSkeleton.classList.remove('hidden');
-    elements.todoList.classList.add('hidden');
-    elements.emptyState.classList.add('hidden');
+  async function fetchTodos(silent = false) {
+    if (!silent) {
+      state.isLoading = true;
+      elements.loadingSkeleton.classList.remove('hidden');
+      elements.todoList.classList.add('hidden');
+      elements.emptyState.classList.add('hidden');
+    }
 
     try {
       const data = await apiRequest(API_ENDPOINT, { method: 'GET' });
@@ -566,8 +568,10 @@
         showBanner(`Failed to load tasks: ${error.message}`);
       }
     } finally {
-      state.isLoading = false;
-      elements.loadingSkeleton.classList.add('hidden');
+      if (!silent) {
+        state.isLoading = false;
+        elements.loadingSkeleton.classList.add('hidden');
+      }
       render();
     }
   }
@@ -1782,6 +1786,39 @@
     }
 
     initSwipeGestures();
+
+    // ================= SYNC ON FOCUS & VISIBILITY CHANGE =================
+    let lastSyncTime = 0;
+    let isSyncingData = false;
+
+    async function syncOnFocus() {
+      if (!getStoredPassword()) return;
+      if (document.visibilityState !== 'visible') return;
+      if (state.isSubmitting) return;
+
+      const now = Date.now();
+      if (now - lastSyncTime < 2000 || isSyncingData) return;
+      lastSyncTime = now;
+      isSyncingData = true;
+
+      try {
+        await Promise.all([fetchProjects(), fetchTodos(true)]);
+      } catch {
+        // Handled silently
+      } finally {
+        isSyncingData = false;
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        syncOnFocus();
+      }
+    });
+
+    window.addEventListener('focus', () => {
+      syncOnFocus();
+    });
   }
 
   // ================= APP INITIALIZATION =================
