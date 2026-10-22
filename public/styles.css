@@ -492,28 +492,49 @@ html:not(.is-authenticated) #appLayout {
   background-color: var(--color-dark-hover);
 }
 
-/* Category Chips Row */
+/* Category & Subproject Chips Row */
 .category-selector-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: var(--space-8);
+  width: 100%;
+  padding: var(--space-4) 0;
+}
+
+.chips-group-cluster {
+  display: flex;
   align-items: center;
   gap: var(--space-8);
-  overflow: visible;
-  padding: 2px 0 var(--space-4);
+  flex-wrap: wrap;
+  width: 100%;
 }
 
-.category-label {
-  font-size: var(--font-xs);
+.chips-group-tag {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: var(--color-muted);
-  font-weight: 600;
-  margin-right: 2px;
+  min-width: 80px;
+  flex-shrink: 0;
 }
 
-.category-chip {
+.group-chips-set {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.category-chip,
+.subproject-chip {
+  appearance: none;
+  -webkit-appearance: none;
   border: 1px solid var(--color-pill-track);
   background-color: #FFFFFF;
   border-radius: var(--radius-full);
-  padding: 6px var(--space-12);
+  padding: 6px 14px;
   font-family: inherit;
   font-size: var(--font-xs);
   font-weight: 500;
@@ -523,54 +544,35 @@ html:not(.is-authenticated) #appLayout {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  line-height: 1.2;
 }
 
-.category-chip:hover {
-  border-color: var(--color-dark);
-}
-
-.category-chip.active {
-  background-color: var(--color-dark);
-  color: #FFFFFF;
-  border-color: var(--color-dark);
-}
-
-/* Subproject Chips Row */
-.subproject-selector-row {
-  padding: 0 0 var(--space-4);
-  gap: 6px;
-}
-
-.subproject-selector-row .category-label {
-  font-size: 11px;
-}
-
-.subproject-chip {
-  border: 1px solid var(--color-pill-track);
-  background-color: var(--color-subtle-box);
-  border-radius: var(--radius-full);
-  padding: 3px var(--space-8);
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--color-dark);
-  cursor: pointer;
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
+.category-chip:hover,
 .subproject-chip:hover {
   border-color: var(--color-dark);
+  background-color: var(--color-subtle-box);
 }
 
+.category-chip.active,
 .subproject-chip.active {
   background-color: var(--color-dark);
   color: #FFFFFF;
   border-color: var(--color-dark);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* Subproject Chips Row */
+.subproject-selector-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+  padding-top: var(--space-8);
+  margin-top: var(--space-4);
+  border-top: 1px dashed var(--color-pill-track);
+  width: 100%;
 }
 
 /* Task List */
@@ -1020,10 +1022,12 @@ html:not(.is-authenticated) #appLayout {
 }
 
 .subproject-toggle-btn {
-  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--color-subtle-box);
   border: 1px solid var(--color-pill-track);
   border-radius: var(--radius-full);
-  padding: 1px 6px;
+  padding: 3px 9px;
   font-family: inherit;
   font-size: 10px;
   font-weight: 600;
@@ -1031,16 +1035,17 @@ html:not(.is-authenticated) #appLayout {
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  transition: all 0.2s;
+  gap: 3px;
+  transition: all 0.15s ease;
+  line-height: 1;
   flex-shrink: 0;
 }
 
 .subproject-toggle-btn:hover,
 .subproject-toggle-btn.is-active {
-  color: var(--color-dark);
+  color: #FFFFFF;
   border-color: var(--color-dark);
-  background-color: var(--color-subtle-box);
+  background-color: var(--color-dark);
 }
 
 .progress-track {
@@ -1213,24 +1218,27 @@ html:not(.is-authenticated) #appLayout {
 }
 
 .btn-sm-outline {
-  background-color: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--color-subtle-box);
   color: var(--color-dark);
   border: 1px solid var(--color-pill-track);
   border-radius: var(--radius-full);
-  padding: 5px 12px;
+  padding: 6px 14px;
   font-family: inherit;
   font-size: var(--font-xs);
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  line-height: 1.2;
 }
 
 .btn-sm-outline:hover {
   border-color: var(--color-dark);
-  background-color: var(--color-subtle-box);
+  background-color: var(--color-pill-track);
 }
 
 .btn-sm-outline.is-active {
@@ -1344,21 +1352,26 @@ html:not(.is-authenticated) #appLayout {
 }
 
 .btn-xs-action {
-  background: var(--color-subtle-box);
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--color-subtle-box);
   border: 1px solid var(--color-pill-track);
   border-radius: var(--radius-full);
-  padding: 3px 8px;
+  padding: 4px 10px;
   font-family: inherit;
   font-size: 11px;
   font-weight: 600;
   color: var(--color-dark);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s ease;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
 }
 
 .btn-xs-action:hover {
-  background: var(--color-dark);
+  background-color: var(--color-dark);
   color: #FFFFFF;
   border-color: var(--color-dark);
 }
@@ -1366,17 +1379,21 @@ html:not(.is-authenticated) #appLayout {
 .subprojects-manage-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding-left: var(--space-16);
+  gap: 6px;
+  padding-left: 14px;
   border-left: 2px solid var(--color-pill-track);
-  margin-left: 4px;
+  margin-left: 6px;
+  margin-top: 4px;
+  box-sizing: border-box;
+  width: calc(100% - 6px);
 }
 
 .subproject-manage-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 2px 0;
+  padding: 4px 0;
+  width: 100%;
 }
 
 .subproj-manage-left {
@@ -1402,17 +1419,20 @@ html:not(.is-authenticated) #appLayout {
 }
 
 .icon-btn-xs {
-  width: 24px;
-  height: 24px;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 26px;
+  height: 26px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
   border: none;
   background: transparent;
   cursor: pointer;
   color: var(--color-muted);
   transition: color 0.15s, background-color 0.15s;
+  padding: 0;
 }
 
 .icon-btn-xs:hover {
@@ -1421,7 +1441,8 @@ html:not(.is-authenticated) #appLayout {
 }
 
 .icon-btn-xs.delete-subproj-btn:hover {
-  color: var(--color-error);
+  color: var(--color-danger);
+  background-color: var(--color-danger-subtle);
 }
 
 /* Reorder Controls */
@@ -1433,23 +1454,26 @@ html:not(.is-authenticated) #appLayout {
 }
 
 .btn-reorder {
-  width: 26px;
-  height: 26px;
-  border-radius: var(--radius-sm);
+  appearance: none;
+  -webkit-appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
   border: 1px solid var(--color-pill-track);
-  background: var(--color-subtle-box);
+  background-color: var(--color-subtle-box);
   color: var(--color-dark);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.15s ease;
+  line-height: 1;
 }
 
 .btn-reorder:hover:not(:disabled) {
-  background: var(--color-dark);
+  background-color: var(--color-dark);
   color: #FFFFFF;
   border-color: var(--color-dark);
 }
@@ -1465,9 +1489,9 @@ html:not(.is-authenticated) #appLayout {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-8) 0 var(--space-4);
+  padding: 12px 0 6px;
   border-bottom: 1px solid var(--color-pill-track);
-  margin-top: var(--space-8);
+  margin-top: 10px;
 }
 
 .project-group-header:first-child,
@@ -1489,24 +1513,6 @@ html:not(.is-authenticated) #appLayout {
   font-size: 10px;
   font-weight: 600;
   color: var(--color-muted);
-}
-
-/* Tasks Page Group Clusters */
-.chips-group-cluster {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-  padding: 2px 0;
-}
-
-.chips-group-tag {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-muted);
-  padding: 0 4px 0 2px;
 }
 
 .preferences-card {

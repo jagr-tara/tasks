@@ -792,19 +792,20 @@
 
     // 1. Render Category Chips on Tasks Page (Grouped cleanly into cluster rows)
     if (elements.taskCategoryChipsRow) {
-      elements.taskCategoryChipsRow.innerHTML = '<span class="category-label">Project:</span>';
+      elements.taskCategoryChipsRow.innerHTML = '';
       const grouped = getGroupedProjects();
 
       grouped.forEach(({ group, projects }) => {
         const cluster = document.createElement('div');
         cluster.className = 'chips-group-cluster';
 
-        if (grouped.length > 1) {
-          const groupTag = document.createElement('span');
-          groupTag.className = 'chips-group-tag';
-          groupTag.textContent = group;
-          cluster.appendChild(groupTag);
-        }
+        const groupTag = document.createElement('span');
+        groupTag.className = 'chips-group-tag';
+        groupTag.textContent = group;
+        cluster.appendChild(groupTag);
+
+        const chipsSet = document.createElement('div');
+        chipsSet.className = 'group-chips-set';
 
         projects.forEach((proj) => {
           const chip = document.createElement('button');
@@ -822,9 +823,10 @@
             renderProjectsUI();
           });
 
-          cluster.appendChild(chip);
+          chipsSet.appendChild(chip);
         });
 
+        cluster.appendChild(chipsSet);
         elements.taskCategoryChipsRow.appendChild(cluster);
       });
     }
@@ -833,9 +835,17 @@
     if (elements.taskSubprojectChipsRow) {
       if (curProj && Array.isArray(curProj.subprojects) && curProj.subprojects.length > 0) {
         elements.taskSubprojectChipsRow.classList.remove('hidden');
-        elements.taskSubprojectChipsRow.innerHTML = '<span class="category-label">Sub-project:</span>';
+        elements.taskSubprojectChipsRow.innerHTML = '';
 
-        // "All / General" chip
+        const subTag = document.createElement('span');
+        subTag.className = 'chips-group-tag';
+        subTag.textContent = 'Sub-project';
+        elements.taskSubprojectChipsRow.appendChild(subTag);
+
+        const chipsSet = document.createElement('div');
+        chipsSet.className = 'group-chips-set';
+
+        // "General" chip
         const allChip = document.createElement('button');
         allChip.type = 'button';
         const isAllActive = !state.selectedSubproject;
@@ -845,7 +855,7 @@
           state.selectedSubproject = null;
           renderProjectsUI();
         });
-        elements.taskSubprojectChipsRow.appendChild(allChip);
+        chipsSet.appendChild(allChip);
 
         // Specific subproject chips
         curProj.subprojects.forEach((subName) => {
@@ -858,8 +868,10 @@
             state.selectedSubproject = subName;
             renderProjectsUI();
           });
-          elements.taskSubprojectChipsRow.appendChild(subChip);
+          chipsSet.appendChild(subChip);
         });
+
+        elements.taskSubprojectChipsRow.appendChild(chipsSet);
       } else {
         elements.taskSubprojectChipsRow.classList.add('hidden');
         elements.taskSubprojectChipsRow.innerHTML = '';

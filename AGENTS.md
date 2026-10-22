@@ -15,6 +15,11 @@ After you successfully complete any file modifications or feature updates, you M
 
 Do not ask for permission to run these commands. Execute them immediately after writing the code.
 
+## Browser Test
+After every change made, do browser test to cloudflared tunnel domain: tasks.jagratara.com
+Instead of localhost: file:///A:/jagratara.com/tasks/
+To makesure changes are updated to github and app is working as expected. 
+
 ## UI and Design Rules (Anti-Vibecoding Constraints)
 Treat UI implementation with strict discipline. Do not generate messy, improvised, or generic "AI-looking" designs.
 
