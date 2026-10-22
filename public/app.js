@@ -1,4 +1,4 @@
-// Single-Page Task & Performance Manager
+// Single-Page Task, Performance & Settings Manager
 // Interacts with Cloudflare Pages Function at /api/todos with X-App-Password authentication
 // Matches exact UI and architecture requirements from AGENTS.md
 
@@ -8,13 +8,14 @@
   const API_ENDPOINT = '/api/todos';
   const AUTH_STORAGE_KEY = 'app_password';
   const LOCAL_CACHE_KEY = 'offline_todos_cache';
+  const PROJECTS_STORAGE_KEY = 'app_custom_projects';
 
-  // Category Configuration
-  const CATEGORIES = {
-    'Decision making': { icon: '🪴', baseMinutes: 860, basePct: 62 },
-    'Design system': { icon: '🍎', baseMinutes: 665, basePct: 48 },
-    'Exploration phase': { icon: '🥞', baseMinutes: 435, basePct: 31 },
-  };
+  // Default Projects Preset
+  const DEFAULT_PROJECTS = [
+    { id: 'proj-1', name: 'Decision making', icon: '🪴', baseMinutes: 860, basePct: 62 },
+    { id: 'proj-2', name: 'Design system', icon: '🍎', baseMinutes: 665, basePct: 48 },
+    { id: 'proj-3', name: 'Exploration phase', icon: '🥞', baseMinutes: 435, basePct: 31 },
+  ];
 
   // Performance Period Data Presets
   const PERIOD_DATA = {
@@ -44,13 +45,16 @@
   // Application State
   const state = {
     todos: [],
+    projects: loadStoredProjects(),
     filter: 'all', // 'all' | 'active' | 'completed'
     isLoading: true,
     isSubmitting: false,
     editingId: null,
-    activeSlide: 0, // 0 = Tasks, 1 = Performance
-    selectedCategory: 'Decision making',
+    activeSlide: 0, // 0 = Performance, 1 = Tasks, 2 = Settings
+    selectedCategory: '',
+    selectedEmoji: '🪴',
     activePeriod: 'week', // 'week' | 'month' | 'year'
+    bannerTimeout: null,
   };
 
   // DOM Elements
@@ -64,26 +68,37 @@
     authBtnText: document.querySelector('.auth-btn-text'),
     authBtnSpinner: document.querySelector('#authSubmitBtn .btn-spinner'),
     lockBtn: document.getElementById('lockBtn'),
+    settingsLockBtn: document.getElementById('settingsLockBtn'),
 
-    // Main App & Slider Elements
+    // Viewport & Slider Elements
     appLayout: document.getElementById('appLayout'),
     pageViewport: document.getElementById('pageViewport'),
     pageSlider: document.getElementById('pageSlider'),
 
-    // Navigation Dock Elements
-    navTasksBtn: document.getElementById('navTasksBtn'),
+    // Bottom Navigation Dock (Left: Performance, Center: Plus, Right: Settings)
     navPerformanceBtn: document.getElementById('navPerformanceBtn'),
-    navMessagesBtn: document.getElementById('navMessagesBtn'),
-    navProfileBtn: document.getElementById('navProfileBtn'),
     fabAddBtn: document.getElementById('fabAddBtn'),
+    navSettingsBtn: document.getElementById('navSettingsBtn'),
 
-    // Tasks Page Elements
+    // Slide 0: Performance Elements
+    periodTabs: document.querySelectorAll('.period-tab'),
+    trendBadge: document.getElementById('trendBadge'),
+    focusedTimeValue: document.getElementById('focusedTimeValue'),
+    comparisonSubtext: document.getElementById('comparisonSubtext'),
+    heatmapGrid: document.getElementById('heatmapGrid'),
+    tasksDoneCount: document.getElementById('tasksDoneCount'),
+    avgDailyFocusValue: document.getElementById('avgDailyFocusValue'),
+    seeAllProjectsBtn: document.getElementById('seeAllProjectsBtn'),
+    cardTasksDone: document.getElementById('cardTasksDone'),
+    projectItemsList: document.getElementById('projectItemsList'),
+
+    // Slide 1: Tasks Elements
     form: document.getElementById('todoForm'),
     taskInput: document.getElementById('taskInput'),
     submitBtn: document.getElementById('submitBtn'),
     btnText: document.querySelector('#submitBtn .btn-text'),
     btnSpinner: document.querySelector('#submitBtn .btn-spinner'),
-    categoryChips: document.querySelectorAll('.category-chip'),
+    taskCategoryChipsRow: document.getElementById('taskCategoryChipsRow'),
     filterTabs: document.querySelectorAll('.filter-tab'),
     todoList: document.getElementById('todoList'),
     loadingSkeleton: document.getElementById('loadingSkeleton'),
@@ -95,26 +110,19 @@
     itemsLeft: document.getElementById('itemsLeft'),
     clearCompletedBtn: document.getElementById('clearCompletedBtn'),
 
-    // Performance Page Elements
-    periodTabs: document.querySelectorAll('.period-tab'),
-    trendBadge: document.getElementById('trendBadge'),
-    focusedTimeValue: document.getElementById('focusedTimeValue'),
-    comparisonSubtext: document.getElementById('comparisonSubtext'),
-    heatmapGrid: document.getElementById('heatmapGrid'),
-    tasksDoneCount: document.getElementById('tasksDoneCount'),
-    avgDailyFocusValue: document.getElementById('avgDailyFocusValue'),
-    seeAllProjectsBtn: document.getElementById('seeAllProjectsBtn'),
-    projHoursDecision: document.getElementById('projHours-decision'),
-    projPctDecision: document.getElementById('projPct-decision'),
-    projBarDecision: document.getElementById('projBar-decision'),
-    projHoursDesign: document.getElementById('projHours-design'),
-    projPctDesign: document.getElementById('projPct-design'),
-    projBarDesign: document.getElementById('projBar-design'),
-    projHoursExploration: document.getElementById('projHours-exploration'),
-    projPctExploration: document.getElementById('projPct-exploration'),
-    projBarExploration: document.getElementById('projBar-exploration'),
+    // Slide 2: Settings Elements
+    openAddProjectBtn: document.getElementById('openAddProjectBtn'),
+    projectFormCard: document.getElementById('projectFormCard'),
+    projectFormTitle: document.getElementById('projectFormTitle'),
+    projectForm: document.getElementById('projectForm'),
+    editProjectId: document.getElementById('editProjectId'),
+    projectNameInput: document.getElementById('projectNameInput'),
+    cancelProjectBtn: document.getElementById('cancelProjectBtn'),
+    emojiPickerGrid: document.getElementById('emojiPickerGrid'),
+    settingsProjectsList: document.getElementById('settingsProjectsList'),
+    resetProjectsBtn: document.getElementById('resetProjectsBtn'),
 
-    // Feedback & Status Elements
+    // Feedback Elements
     banner: document.getElementById('banner'),
     bannerMessage: document.getElementById('bannerMessage'),
     bannerClose: document.getElementById('bannerClose'),
@@ -122,7 +130,33 @@
     syncStatus: document.getElementById('syncStatus'),
   };
 
-  // ================= LOCAL FALLBACK STORAGE =================
+  // ================= PROJECT STORAGE & HELPERS =================
+  function loadStoredProjects() {
+    try {
+      const saved = localStorage.getItem(PROJECTS_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // fallback
+    }
+    return JSON.parse(JSON.stringify(DEFAULT_PROJECTS));
+  }
+
+  function saveStoredProjects() {
+    try {
+      localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(state.projects));
+    } catch {
+      // ignore
+    }
+  }
+
+  function getProjectByName(name) {
+    return state.projects.find((p) => p.name.toLowerCase() === name.toLowerCase());
+  }
+
+  // ================= LOCAL FALLBACK STORAGE FOR TODOS =================
   function getCachedTodos() {
     try {
       const saved = localStorage.getItem(LOCAL_CACHE_KEY);
@@ -197,19 +231,20 @@
     const rawTitle = (task.title || '').trim();
     const match = rawTitle.match(/^\[(.*?)\]\s*(.*)$/);
 
-    if (match && CATEGORIES[match[1]]) {
+    if (match) {
+      const proj = getProjectByName(match[1]);
       return {
-        category: match[1],
+        category: proj ? proj.name : match[1],
         cleanTitle: match[2] || rawTitle,
-        icon: CATEGORIES[match[1]].icon,
+        icon: proj ? proj.icon : '📌',
       };
     }
 
-    // Default to Decision making if unspecified
+    const defaultProj = state.projects[0] || { name: 'General', icon: '📌' };
     return {
-      category: 'Decision making',
+      category: defaultProj.name,
       cleanTitle: rawTitle,
-      icon: '🪴',
+      icon: defaultProj.icon,
     };
   }
 
@@ -218,8 +253,6 @@
     const mins = Math.round(minutes % 60);
     return `${hrs}h ${mins < 10 ? '0' : ''}${mins}m`;
   }
-
-  let bannerTimeout = null;
 
   function showBanner(message, type = 'error') {
     elements.bannerMessage.textContent = message;
@@ -231,14 +264,14 @@
       elements.connectionStatus.querySelector('.status-label').textContent = 'Error';
     }
 
-    clearTimeout(bannerTimeout);
-    bannerTimeout = setTimeout(() => {
+    clearTimeout(state.bannerTimeout);
+    state.bannerTimeout = setTimeout(() => {
       hideBanner();
     }, 3500);
   }
 
   function hideBanner() {
-    clearTimeout(bannerTimeout);
+    clearTimeout(state.bannerTimeout);
     elements.banner.classList.add('hidden');
     if (elements.connectionStatus) {
       elements.connectionStatus.className = 'status-indicator';
@@ -264,7 +297,6 @@
   async function apiRequest(url, options = {}) {
     const password = getStoredPassword();
 
-    // If running in local file protocol, use local cache simulation
     if (window.location.protocol === 'file:') {
       return simulateOfflineRequest(url, options);
     }
@@ -294,7 +326,6 @@
       return data;
     } catch (err) {
       if (err.message === 'Unauthorized') throw err;
-      // Fallback gracefully for local development or disconnected preview
       return simulateOfflineRequest(url, options);
     }
   }
@@ -382,7 +413,8 @@
     elements.btnSpinner.classList.remove('hidden');
     setSyncing(true, 'Adding...');
 
-    const formattedTitle = `[${state.selectedCategory}] ${cleanTitle}`;
+    const category = state.selectedCategory || (state.projects[0] ? state.projects[0].name : 'General');
+    const formattedTitle = `[${category}] ${cleanTitle}`;
 
     try {
       const data = await apiRequest(API_ENDPOINT, {
@@ -443,7 +475,6 @@
 
     setSyncing(true, 'Saving...');
 
-    // Preserve project category tag if not explicitly typed
     let finalTitle = trimmed;
     if (!trimmed.startsWith('[')) {
       finalTitle = `[${originalCategory || state.selectedCategory}] ${trimmed}`;
@@ -513,30 +544,33 @@
     }
   }
 
-  // ================= SLIDER & NAVIGATION =================
+  // ================= 3-SLIDE DOCK NAVIGATION =================
+  // Slide 0: Performance, Slide 1: Tasks (Center Plus), Slide 2: Settings
   function goToSlide(slideIndex) {
+    if (slideIndex < 0 || slideIndex > 2) return;
     state.activeSlide = slideIndex;
-    elements.pageSlider.style.transform = `translateX(-${slideIndex * 50}%)`;
+    elements.pageSlider.style.transform = `translateX(-${slideIndex * (100 / 3)}%)`;
 
-    // Update Dock Tabs
-    if (slideIndex === 0) {
-      elements.navTasksBtn.classList.add('active');
-      elements.navTasksBtn.setAttribute('aria-selected', 'true');
-      elements.navPerformanceBtn.classList.remove('active');
-      elements.navPerformanceBtn.setAttribute('aria-selected', 'false');
-    } else {
-      elements.navTasksBtn.classList.remove('active');
-      elements.navTasksBtn.setAttribute('aria-selected', 'false');
-      elements.navPerformanceBtn.classList.add('active');
-      elements.navPerformanceBtn.setAttribute('aria-selected', 'true');
-    }
+    // Update Dock Highlights
+    elements.navPerformanceBtn.classList.toggle('active', slideIndex === 0);
+    elements.navPerformanceBtn.setAttribute('aria-selected', slideIndex === 0 ? 'true' : 'false');
 
-    // Scroll smoothly to top
+    elements.fabAddBtn.classList.toggle('active', slideIndex === 1);
+    elements.fabAddBtn.setAttribute('aria-selected', slideIndex === 1 ? 'true' : 'false');
+
+    elements.navSettingsBtn.classList.toggle('active', slideIndex === 2);
+    elements.navSettingsBtn.setAttribute('aria-selected', slideIndex === 2 ? 'true' : 'false');
+
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    renderPerformanceMetrics();
+
+    if (slideIndex === 0) {
+      renderPerformanceMetrics();
+    } else if (slideIndex === 1) {
+      setTimeout(() => elements.taskInput.focus(), 250);
+    }
   }
 
-  // Swipe Gesture Support
+  // Swipe Gesture Handling for 3 Slides
   let touchStartX = 0;
   let touchStartY = 0;
 
@@ -556,12 +590,11 @@
         const deltaX = e.changedTouches[0].clientX - touchStartX;
         const deltaY = e.changedTouches[0].clientY - touchStartY;
 
-        // Ensure horizontal swipe intent
         if (Math.abs(deltaX) > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 1.4) {
-          if (deltaX < 0 && state.activeSlide === 0) {
-            goToSlide(1); // Swipe left -> Performance
-          } else if (deltaX > 0 && state.activeSlide === 1) {
-            goToSlide(0); // Swipe right -> Tasks
+          if (deltaX < 0 && state.activeSlide < 2) {
+            goToSlide(state.activeSlide + 1); // Swipe left -> next slide
+          } else if (deltaX > 0 && state.activeSlide > 0) {
+            goToSlide(state.activeSlide - 1); // Swipe right -> prev slide
           }
         }
       },
@@ -575,8 +608,6 @@
     const totalColumns = 22;
     const rows = 7;
 
-    // Pattern reproducing the reference image:
-    // Left/middle columns have sparse blocks, rightmost columns have dense black squares
     for (let c = 0; c < totalColumns; c++) {
       for (let r = 0; r < rows; r++) {
         const cell = document.createElement('div');
@@ -586,7 +617,6 @@
         const colRatio = c / totalColumns;
 
         if (colRatio > 0.85) {
-          // Rightmost cluster: heavily dark
           level = (c + r) % 5 === 0 ? 0 : (c + r) % 4 === 1 ? 2 : (c + r) % 2 === 0 ? 4 : 3;
         } else if (colRatio > 0.6) {
           level = (c * 3 + r * 7) % 7 > 4 ? 3 : (c + r) % 4 === 0 ? 4 : 0;
@@ -602,6 +632,190 @@
     }
   }
 
+  // ================= PROJECT MANAGEMENT & UI BINDING =================
+  function renderProjectsUI() {
+    // Ensure selectedCategory is valid
+    if (!state.projects.some((p) => p.name === state.selectedCategory)) {
+      state.selectedCategory = state.projects[0] ? state.projects[0].name : '';
+    }
+
+    // 1. Render Category Chips on Tasks Page
+    elements.taskCategoryChipsRow.innerHTML = '<span class="category-label">Project:</span>';
+    state.projects.forEach((proj, idx) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      const isSelected = proj.name === state.selectedCategory;
+      chip.className = `category-chip ${isSelected ? 'active' : ''}`;
+      chip.dataset.category = proj.name;
+      chip.setAttribute('role', 'radio');
+      chip.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+      chip.innerHTML = `<span class="chip-icon">${proj.icon}</span> ${proj.name}`;
+
+      chip.addEventListener('click', () => {
+        elements.taskCategoryChipsRow.querySelectorAll('.category-chip').forEach((c) => {
+          c.classList.remove('active');
+          c.setAttribute('aria-checked', 'false');
+        });
+        chip.classList.add('active');
+        chip.setAttribute('aria-checked', 'true');
+        state.selectedCategory = proj.name;
+      });
+
+      elements.taskCategoryChipsRow.appendChild(chip);
+    });
+
+    // 2. Render Projects List on Settings Page
+    elements.settingsProjectsList.innerHTML = '';
+    state.projects.forEach((proj) => {
+      const taskCount = state.todos.filter((t) => parseTask(t).category === proj.name).length;
+
+      const item = document.createElement('div');
+      item.className = 'project-manage-item';
+      item.dataset.id = proj.id;
+      item.innerHTML = `
+        <div class="proj-manage-left">
+          <div class="proj-manage-icon">${proj.icon}</div>
+          <div>
+            <div class="proj-manage-name">${proj.name}</div>
+            <div class="project-pct">${taskCount} task${taskCount === 1 ? '' : 's'}</div>
+          </div>
+        </div>
+        <div class="proj-manage-actions">
+          <button type="button" class="icon-btn edit-proj-btn" aria-label="Edit project ${proj.name}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+            </svg>
+          </button>
+          <button type="button" class="icon-btn icon-btn-delete delete-proj-btn" aria-label="Delete project ${proj.name}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </button>
+        </div>
+      `;
+
+      item.querySelector('.edit-proj-btn').addEventListener('click', () => {
+        openEditProjectForm(proj);
+      });
+
+      item.querySelector('.delete-proj-btn').addEventListener('click', () => {
+        handleDeleteProject(proj.id);
+      });
+
+      elements.settingsProjectsList.appendChild(item);
+    });
+
+    renderPerformanceMetrics();
+  }
+
+  function openEditProjectForm(proj = null) {
+    elements.projectFormCard.classList.remove('hidden');
+
+    if (proj) {
+      elements.projectFormTitle.textContent = 'Edit Project';
+      elements.editProjectId.value = proj.id;
+      elements.projectNameInput.value = proj.name;
+      state.selectedEmoji = proj.icon;
+    } else {
+      elements.projectFormTitle.textContent = 'New Project';
+      elements.editProjectId.value = '';
+      elements.projectNameInput.value = '';
+      state.selectedEmoji = '🪴';
+    }
+
+    elements.emojiPickerGrid.querySelectorAll('.emoji-opt').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.emoji === state.selectedEmoji);
+    });
+
+    elements.projectNameInput.focus();
+    elements.projectFormCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function closeProjectForm() {
+    elements.projectFormCard.classList.add('hidden');
+    elements.editProjectId.value = '';
+    elements.projectNameInput.value = '';
+  }
+
+  function handleSaveProject(event) {
+    event.preventDefault();
+    const name = elements.projectNameInput.value.trim();
+    const editId = elements.editProjectId.value;
+
+    if (!name) return;
+
+    if (editId) {
+      // Edit existing
+      const existing = state.projects.find((p) => p.id === editId);
+      if (existing) {
+        const oldName = existing.name;
+        existing.name = name;
+        existing.icon = state.selectedEmoji;
+
+        // Update existing task titles to match new project name
+        state.todos = state.todos.map((t) => {
+          const parsed = parseTask(t);
+          if (parsed.category.toLowerCase() === oldName.toLowerCase()) {
+            return { ...t, title: `[${name}] ${parsed.cleanTitle}` };
+          }
+          return t;
+        });
+      }
+    } else {
+      // Add new project
+      if (getProjectByName(name)) {
+        showBanner(`A project named "${name}" already exists.`);
+        return;
+      }
+
+      state.projects.push({
+        id: `proj-${Date.now()}`,
+        name,
+        icon: state.selectedEmoji,
+        baseMinutes: 300,
+        basePct: 20,
+      });
+      state.selectedCategory = name;
+    }
+
+    saveStoredProjects();
+    closeProjectForm();
+    renderProjectsUI();
+    render();
+    showBanner(editId ? 'Project updated successfully.' : 'New project added.', 'info');
+  }
+
+  function handleDeleteProject(id) {
+    if (state.projects.length <= 1) {
+      showBanner('At least one project must be retained.');
+      return;
+    }
+
+    const proj = state.projects.find((p) => p.id === id);
+    if (!proj) return;
+
+    state.projects = state.projects.filter((p) => p.id !== id);
+    if (state.selectedCategory === proj.name) {
+      state.selectedCategory = state.projects[0] ? state.projects[0].name : '';
+    }
+
+    saveStoredProjects();
+    renderProjectsUI();
+    render();
+    showBanner(`Project "${proj.name}" removed.`, 'info');
+  }
+
+  function handleResetDefaultProjects() {
+    state.projects = JSON.parse(JSON.stringify(DEFAULT_PROJECTS));
+    state.selectedCategory = state.projects[0].name;
+    saveStoredProjects();
+    renderProjectsUI();
+    render();
+    showBanner('Projects reset to default.', 'info');
+  }
+
   // ================= PERFORMANCE METRICS COMPUTATION =================
   function renderPerformanceMetrics() {
     const period = PERIOD_DATA[state.activePeriod] || PERIOD_DATA.week;
@@ -611,62 +825,46 @@
     elements.trendBadge.innerHTML = `<span class="badge-arrow">▲</span> ${period.trend}`;
     elements.avgDailyFocusValue.textContent = period.avgFocus;
 
-    // Calculate actual task stats
     const totalCompleted = state.todos.filter((t) => Boolean(t.completed)).length;
-    // Base 18 tasks done matching image + user completed count
     elements.tasksDoneCount.textContent = 18 + totalCompleted;
 
-    // Project breakdown calculation
-    const projectStats = {
-      'Decision making': { count: 0, completed: 0 },
-      'Design system': { count: 0, completed: 0 },
-      'Exploration phase': { count: 0, completed: 0 },
-    };
+    // Project breakdown calculation based on all active projects
+    elements.projectItemsList.innerHTML = '';
 
-    state.todos.forEach((todo) => {
-      const { category } = parseTask(todo);
-      if (projectStats[category]) {
-        projectStats[category].count++;
-        if (todo.completed) {
-          projectStats[category].completed++;
-        }
-      }
+    state.projects.forEach((proj) => {
+      const projectTasks = state.todos.filter((t) => parseTask(t).category.toLowerCase() === proj.name.toLowerCase());
+      const completedTasks = projectTasks.filter((t) => Boolean(t.completed)).length;
+
+      const baseMins = proj.baseMinutes || 400;
+      const basePct = proj.basePct || 30;
+
+      const currentMins = baseMins + completedTasks * 45;
+      const currentPct = Math.min(95, basePct + completedTasks * 3);
+
+      const row = document.createElement('div');
+      row.className = 'project-row-item';
+      row.dataset.project = proj.name;
+      row.innerHTML = `
+        <div class="project-icon-box">${proj.icon}</div>
+        <div class="project-body-col">
+          <span class="project-name">${proj.name}</span>
+          <div class="progress-track">
+            <div class="progress-fill" style="width: ${currentPct}%;"></div>
+          </div>
+        </div>
+        <div class="project-stats-col">
+          <span class="project-hours">${formatDuration(currentMins)}</span>
+          <span class="project-pct">${currentPct}%</span>
+        </div>
+      `;
+
+      row.addEventListener('click', () => {
+        state.selectedCategory = proj.name;
+        goToSlide(1); // Jump to Tasks with this project selected
+      });
+
+      elements.projectItemsList.appendChild(row);
     });
-
-    // Dynamic adjustment on top of base values
-    const decisionMins =
-      CATEGORIES['Decision making'].baseMinutes + projectStats['Decision making'].completed * 45;
-    const decisionPct = Math.min(
-      95,
-      CATEGORIES['Decision making'].basePct + projectStats['Decision making'].completed * 2
-    );
-
-    const designMins =
-      CATEGORIES['Design system'].baseMinutes + projectStats['Design system'].completed * 35;
-    const designPct = Math.min(
-      95,
-      CATEGORIES['Design system'].basePct + projectStats['Design system'].completed * 2
-    );
-
-    const explorationMins =
-      CATEGORIES['Exploration phase'].baseMinutes +
-      projectStats['Exploration phase'].completed * 30;
-    const explorationPct = Math.min(
-      95,
-      CATEGORIES['Exploration phase'].basePct + projectStats['Exploration phase'].completed * 2
-    );
-
-    elements.projHoursDecision.textContent = formatDuration(decisionMins);
-    elements.projPctDecision.textContent = `${decisionPct}%`;
-    elements.projBarDecision.style.width = `${decisionPct}%`;
-
-    elements.projHoursDesign.textContent = formatDuration(designMins);
-    elements.projPctDesign.textContent = `${designPct}%`;
-    elements.projBarDesign.style.width = `${designPct}%`;
-
-    elements.projHoursExploration.textContent = formatDuration(explorationMins);
-    elements.projPctExploration.textContent = `${explorationPct}%`;
-    elements.projBarExploration.style.width = `${explorationPct}%`;
   }
 
   // ================= TASK RENDERING =================
@@ -687,14 +885,12 @@
     const completedCount = state.todos.filter((t) => Boolean(t.completed)).length;
     const activeCount = totalCount - completedCount;
 
-    // Update Counters
     elements.countAll.textContent = totalCount;
     elements.countActive.textContent = activeCount;
     elements.countCompleted.textContent = completedCount;
     elements.itemsLeft.textContent = `${activeCount} task${activeCount === 1 ? '' : 's'} remaining`;
     elements.clearCompletedBtn.disabled = completedCount === 0;
 
-    // Filter Items
     let visibleTodos = state.todos;
     if (state.filter === 'active') {
       visibleTodos = state.todos.filter((t) => !t.completed);
@@ -702,7 +898,6 @@
       visibleTodos = state.todos.filter((t) => Boolean(t.completed));
     }
 
-    // Render Empty State or List
     if (visibleTodos.length === 0) {
       elements.todoList.classList.add('hidden');
       elements.emptyState.classList.remove('hidden');
@@ -728,7 +923,6 @@
         li.className = `todo-item ${isCompleted ? 'is-completed' : ''}`;
         li.dataset.id = todo.id;
 
-        // Custom Circular Checkbox
         const checkbox = document.createElement('button');
         checkbox.type = 'button';
         checkbox.className = 'custom-checkbox';
@@ -743,7 +937,6 @@
         `;
         checkbox.addEventListener('click', () => handleToggleTodo(todo.id, isCompleted, li));
 
-        // Task Content
         const content = document.createElement('div');
         content.className = 'todo-content';
 
@@ -788,7 +981,6 @@
           content.appendChild(tagSpan);
         }
 
-        // Action Buttons
         const actions = document.createElement('div');
         actions.className = 'item-actions';
 
@@ -854,28 +1046,23 @@
       }
     });
 
-    // Lock Session
+    // Lock Session Buttons
     elements.lockBtn.addEventListener('click', () => {
       clearStoredPassword();
       state.todos = [];
       showAuthPrompt();
     });
 
+    if (elements.settingsLockBtn) {
+      elements.settingsLockBtn.addEventListener('click', () => {
+        clearStoredPassword();
+        state.todos = [];
+        showAuthPrompt();
+      });
+    }
+
     // Add Todo Form
     elements.form.addEventListener('submit', handleAddTodo);
-
-    // Category Selector Chips
-    elements.categoryChips.forEach((chip) => {
-      chip.addEventListener('click', () => {
-        elements.categoryChips.forEach((c) => {
-          c.classList.remove('active');
-          c.setAttribute('aria-checked', 'false');
-        });
-        chip.classList.add('active');
-        chip.setAttribute('aria-checked', 'true');
-        state.selectedCategory = chip.dataset.category;
-      });
-    });
 
     // Task Filter Tabs
     elements.filterTabs.forEach((tab) => {
@@ -902,32 +1089,50 @@
       });
     });
 
-    // Bottom Navigation Dock Tabs
-    elements.navTasksBtn.addEventListener('click', () => goToSlide(0));
-    elements.navPerformanceBtn.addEventListener('click', () => goToSlide(1));
+    // ================= BOTTOM DOCK ACTIONS =================
+    // 1. Left Button: Performance Dashboard
+    elements.navPerformanceBtn.addEventListener('click', () => goToSlide(0));
 
-    if (elements.navMessagesBtn) {
-      elements.navMessagesBtn.addEventListener('click', () => {
-        showBanner('Discussions & team comments coming in the next update.', 'info');
-      });
-    }
-
-    if (elements.navProfileBtn) {
-      elements.navProfileBtn.addEventListener('click', () => {
-        showBanner('Workspace settings & profile connected.', 'info');
-      });
-    }
-
-    // Floating Action Button (+ FAB)
+    // 2. Middle Plus Button: Tasks Management & Add Task
     elements.fabAddBtn.addEventListener('click', () => {
-      if (state.activeSlide !== 0) {
-        goToSlide(0);
-      }
+      goToSlide(1);
       setTimeout(() => {
         elements.taskInput.focus();
         elements.taskInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 200);
+      }, 150);
     });
+
+    // 3. Right Button: Settings & Projects
+    elements.navSettingsBtn.addEventListener('click', () => goToSlide(2));
+
+    // Performance Page Shortcuts
+    if (elements.cardTasksDone) {
+      elements.cardTasksDone.addEventListener('click', () => goToSlide(1));
+    }
+
+    if (elements.seeAllProjectsBtn) {
+      elements.seeAllProjectsBtn.addEventListener('click', () => goToSlide(2));
+    }
+
+    // ================= SETTINGS: PROJECT ACTIONS =================
+    elements.openAddProjectBtn.addEventListener('click', () => {
+      openEditProjectForm(null);
+    });
+
+    elements.cancelProjectBtn.addEventListener('click', closeProjectForm);
+    elements.projectForm.addEventListener('submit', handleSaveProject);
+
+    // Emoji Picker Options
+    elements.emojiPickerGrid.querySelectorAll('.emoji-opt').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        elements.emojiPickerGrid.querySelectorAll('.emoji-opt').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.selectedEmoji = btn.dataset.emoji;
+      });
+    });
+
+    // Reset Projects Button
+    elements.resetProjectsBtn.addEventListener('click', handleResetDefaultProjects);
 
     initSwipeGestures();
   }
@@ -936,6 +1141,7 @@
   function initializeApp() {
     setupEventListeners();
     renderHeatmap();
+    renderProjectsUI();
 
     const savedPassword = getStoredPassword();
     if (!savedPassword) {
