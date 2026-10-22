@@ -9,10 +9,19 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem('app_password')) {
+          document.documentElement.classList.add('is-authenticated');
+        }
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
   <!-- Authentication Overlay -->
-  <div id="authOverlay" class="auth-overlay hidden">
+  <div id="authOverlay" class="auth-overlay">
     <div class="auth-card" role="dialog" aria-labelledby="authTitle" aria-modal="true">
       <div class="auth-header">
         <div class="auth-icon-circle" aria-hidden="true">

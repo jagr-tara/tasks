@@ -181,18 +181,31 @@
 
   // ================= AUTHENTICATION =================
   function getStoredPassword() {
-    return localStorage.getItem(AUTH_STORAGE_KEY) || '';
+    try {
+      return localStorage.getItem(AUTH_STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
   }
 
   function setStoredPassword(password) {
-    localStorage.setItem(AUTH_STORAGE_KEY, password);
+    try {
+      localStorage.setItem(AUTH_STORAGE_KEY, password);
+    } catch {
+      // ignore
+    }
   }
 
   function clearStoredPassword() {
-    localStorage.removeItem(AUTH_STORAGE_KEY);
+    try {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
   }
 
   function showAuthPrompt(errorMessage = '') {
+    document.documentElement.classList.remove('is-authenticated');
     elements.appLayout.classList.add('hidden');
     elements.authOverlay.classList.remove('hidden');
 
@@ -209,6 +222,7 @@
   }
 
   function hideAuthPrompt() {
+    document.documentElement.classList.add('is-authenticated');
     elements.authAlert.classList.add('hidden');
     elements.authAlert.textContent = '';
     elements.authOverlay.classList.add('hidden');
@@ -1139,18 +1153,31 @@
 
   // ================= APP INITIALIZATION =================
   function initializeApp() {
-    setupEventListeners();
-    renderHeatmap();
-    renderProjectsUI();
+    try {
+      setupEventListeners();
+      renderHeatmap();
+      renderProjectsUI();
+      goToSlide(0);
 
-    const savedPassword = getStoredPassword();
-    if (!savedPassword) {
-      showAuthPrompt();
-    } else {
-      hideAuthPrompt();
-      fetchTodos();
+      const savedPassword = getStoredPassword();
+      if (!savedPassword) {
+        showAuthPrompt();
+      } else {
+        hideAuthPrompt();
+        fetchTodos();
+      }
+    } catch (err) {
+      console.error('Initialization error:', err);
+      document.documentElement.classList.add('is-authenticated');
+      if (elements.authOverlay) elements.authOverlay.classList.add('hidden');
+      if (elements.appLayout) elements.appLayout.classList.remove('hidden');
+      showBanner(`Initialization issue: ${err.message}`, 'error');
     }
   }
 
-  document.addEventListener('DOMContentLoaded', initializeApp);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeApp);
+  } else {
+    initializeApp();
+  }
 })();

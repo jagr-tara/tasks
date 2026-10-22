@@ -108,6 +108,19 @@ body {
   display: none !important;
 }
 
+/* Instant Visibility States to Prevent Blank Screen */
+html.is-authenticated #authOverlay {
+  display: none !important;
+}
+
+html.is-authenticated #appLayout {
+  display: flex !important;
+}
+
+html:not(.is-authenticated) #appLayout {
+  display: none !important;
+}
+
 /* Authentication Overlay */
 .auth-overlay {
   position: fixed;
