@@ -10,11 +10,11 @@
   const LOCAL_CACHE_KEY = 'offline_todos_cache';
   const PROJECTS_STORAGE_KEY = 'app_custom_projects';
 
-  // Default Projects Preset
+  // Default Projects Preset (Text only)
   const DEFAULT_PROJECTS = [
-    { id: 'proj-1', name: 'Decision making', icon: '🪴', baseMinutes: 860, basePct: 62 },
-    { id: 'proj-2', name: 'Design system', icon: '🍎', baseMinutes: 665, basePct: 48 },
-    { id: 'proj-3', name: 'Exploration phase', icon: '🥞', baseMinutes: 435, basePct: 31 },
+    { id: 'proj-1', name: 'Decision making', baseMinutes: 860, basePct: 62 },
+    { id: 'proj-2', name: 'Design system', baseMinutes: 665, basePct: 48 },
+    { id: 'proj-3', name: 'Exploration phase', baseMinutes: 435, basePct: 31 },
   ];
 
   // Performance Period Data Presets
@@ -52,7 +52,6 @@
     editingId: null,
     activeSlide: 0, // 0 = Performance, 1 = Tasks, 2 = Settings
     selectedCategory: '',
-    selectedEmoji: '🪴',
     activePeriod: 'week', // 'week' | 'month' | 'year'
     bannerTimeout: null,
   };
@@ -118,7 +117,6 @@
     editProjectId: document.getElementById('editProjectId'),
     projectNameInput: document.getElementById('projectNameInput'),
     cancelProjectBtn: document.getElementById('cancelProjectBtn'),
-    emojiPickerGrid: document.getElementById('emojiPickerGrid'),
     settingsProjectsList: document.getElementById('settingsProjectsList'),
     resetProjectsBtn: document.getElementById('resetProjectsBtn'),
 
@@ -136,7 +134,12 @@
       const saved = localStorage.getItem(PROJECTS_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((p) => {
+            const { icon, ...rest } = p;
+            return rest;
+          });
+        }
       }
     } catch {
       // fallback
@@ -250,15 +253,13 @@
       return {
         category: proj ? proj.name : match[1],
         cleanTitle: match[2] || rawTitle,
-        icon: proj ? proj.icon : '📌',
       };
     }
 
-    const defaultProj = state.projects[0] || { name: 'General', icon: '📌' };
+    const defaultProj = state.projects[0] || { name: 'General' };
     return {
       category: defaultProj.name,
       cleanTitle: rawTitle,
-      icon: defaultProj.icon,
     };
   }
 
@@ -275,7 +276,8 @@
 
     if (type === 'error' && elements.connectionStatus) {
       elements.connectionStatus.className = 'status-indicator is-error';
-      elements.connectionStatus.querySelector('.status-label').textContent = 'Error';
+      const label = elements.connectionStatus.querySelector('.status-label');
+      if (label) label.textContent = 'Error';
     }
 
     clearTimeout(state.bannerTimeout);
@@ -289,21 +291,26 @@
     elements.banner.classList.add('hidden');
     if (elements.connectionStatus) {
       elements.connectionStatus.className = 'status-indicator';
-      elements.connectionStatus.querySelector('.status-label').textContent = 'Ready';
+      const label = elements.connectionStatus.querySelector('.status-label');
+      if (label) label.textContent = 'Ready';
     }
   }
 
   function setSyncing(isSyncing, label = 'Syncing...') {
-    if (!elements.connectionStatus || !elements.syncStatus) return;
+    if (elements.connectionStatus) {
+      if (isSyncing) {
+        elements.connectionStatus.className = 'status-indicator is-syncing';
+        const statusLabel = elements.connectionStatus.querySelector('.status-label');
+        if (statusLabel) statusLabel.textContent = label;
+      } else {
+        elements.connectionStatus.className = 'status-indicator';
+        const statusLabel = elements.connectionStatus.querySelector('.status-label');
+        if (statusLabel) statusLabel.textContent = 'Ready';
+      }
+    }
 
-    if (isSyncing) {
-      elements.connectionStatus.className = 'status-indicator is-syncing';
-      elements.connectionStatus.querySelector('.status-label').textContent = label;
-      elements.syncStatus.textContent = 'Saving changes...';
-    } else {
-      elements.connectionStatus.className = 'status-indicator';
-      elements.connectionStatus.querySelector('.status-label').textContent = 'Ready';
-      elements.syncStatus.textContent = 'Up to date';
+    if (elements.syncStatus) {
+      elements.syncStatus.textContent = isSyncing ? 'Saving changes...' : 'Up to date';
     }
   }
 
@@ -653,9 +660,9 @@
       state.selectedCategory = state.projects[0] ? state.projects[0].name : '';
     }
 
-    // 1. Render Category Chips on Tasks Page
+    // 1. Render Category Chips on Tasks Page (Text only, wraps into new row)
     elements.taskCategoryChipsRow.innerHTML = '<span class="category-label">Project:</span>';
-    state.projects.forEach((proj, idx) => {
+    state.projects.forEach((proj) => {
       const chip = document.createElement('button');
       chip.type = 'button';
       const isSelected = proj.name === state.selectedCategory;
@@ -663,7 +670,7 @@
       chip.dataset.category = proj.name;
       chip.setAttribute('role', 'radio');
       chip.setAttribute('aria-checked', isSelected ? 'true' : 'false');
-      chip.innerHTML = `<span class="chip-icon">${proj.icon}</span> ${proj.name}`;
+      chip.textContent = proj.name;
 
       chip.addEventListener('click', () => {
         elements.taskCategoryChipsRow.querySelectorAll('.category-chip').forEach((c) => {
@@ -678,21 +685,18 @@
       elements.taskCategoryChipsRow.appendChild(chip);
     });
 
-    // 2. Render Projects List on Settings Page
+    // 2. Render Projects List on Settings Page (Text only)
     elements.settingsProjectsList.innerHTML = '';
     state.projects.forEach((proj) => {
-      const taskCount = state.todos.filter((t) => parseTask(t).category === proj.name).length;
+      const taskCount = state.todos.filter((t) => parseTask(t).category.toLowerCase() === proj.name.toLowerCase()).length;
 
       const item = document.createElement('div');
       item.className = 'project-manage-item';
       item.dataset.id = proj.id;
       item.innerHTML = `
         <div class="proj-manage-left">
-          <div class="proj-manage-icon">${proj.icon}</div>
-          <div>
-            <div class="proj-manage-name">${proj.name}</div>
-            <div class="project-pct">${taskCount} task${taskCount === 1 ? '' : 's'}</div>
-          </div>
+          <div class="proj-manage-name">${proj.name}</div>
+          <div class="project-pct">${taskCount} task${taskCount === 1 ? '' : 's'}</div>
         </div>
         <div class="proj-manage-actions">
           <button type="button" class="icon-btn edit-proj-btn" aria-label="Edit project ${proj.name}">
@@ -731,17 +735,11 @@
       elements.projectFormTitle.textContent = 'Edit Project';
       elements.editProjectId.value = proj.id;
       elements.projectNameInput.value = proj.name;
-      state.selectedEmoji = proj.icon;
     } else {
       elements.projectFormTitle.textContent = 'New Project';
       elements.editProjectId.value = '';
       elements.projectNameInput.value = '';
-      state.selectedEmoji = '🪴';
     }
-
-    elements.emojiPickerGrid.querySelectorAll('.emoji-opt').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.emoji === state.selectedEmoji);
-    });
 
     elements.projectNameInput.focus();
     elements.projectFormCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -766,7 +764,6 @@
       if (existing) {
         const oldName = existing.name;
         existing.name = name;
-        existing.icon = state.selectedEmoji;
 
         // Update existing task titles to match new project name
         state.todos = state.todos.map((t) => {
@@ -787,7 +784,6 @@
       state.projects.push({
         id: `proj-${Date.now()}`,
         name,
-        icon: state.selectedEmoji,
         baseMinutes: 300,
         basePct: 20,
       });
@@ -842,7 +838,7 @@
     const totalCompleted = state.todos.filter((t) => Boolean(t.completed)).length;
     elements.tasksDoneCount.textContent = 18 + totalCompleted;
 
-    // Project breakdown calculation based on all active projects
+    // Project breakdown calculation based on all active projects (Text only)
     elements.projectItemsList.innerHTML = '';
 
     state.projects.forEach((proj) => {
@@ -859,7 +855,6 @@
       row.className = 'project-row-item';
       row.dataset.project = proj.name;
       row.innerHTML = `
-        <div class="project-icon-box">${proj.icon}</div>
         <div class="project-body-col">
           <span class="project-name">${proj.name}</span>
           <div class="progress-track">
@@ -989,7 +984,7 @@
 
           const tagSpan = document.createElement('span');
           tagSpan.className = 'todo-tag';
-          tagSpan.textContent = `${parsed.icon} ${parsed.category}`;
+          tagSpan.textContent = parsed.category;
 
           content.appendChild(titleSpan);
           content.appendChild(tagSpan);
@@ -1135,15 +1130,6 @@
 
     elements.cancelProjectBtn.addEventListener('click', closeProjectForm);
     elements.projectForm.addEventListener('submit', handleSaveProject);
-
-    // Emoji Picker Options
-    elements.emojiPickerGrid.querySelectorAll('.emoji-opt').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        elements.emojiPickerGrid.querySelectorAll('.emoji-opt').forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        state.selectedEmoji = btn.dataset.emoji;
-      });
-    });
 
     // Reset Projects Button
     elements.resetProjectsBtn.addEventListener('click', handleResetDefaultProjects);
