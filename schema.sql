@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS todos (
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  completed_at DATETIME,
   project_id INTEGER,
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
 );

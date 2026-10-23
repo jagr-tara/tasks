@@ -31,6 +31,9 @@
     isReordering: false,
   };
 
+  // 5-Second Undo Pending Completions Map (id -> { timerId, startTime })
+  const pendingCompletions = new Map();
+
   // DOM Elements
   const elements = {
     // Auth Elements
@@ -65,6 +68,10 @@
     seeAllProjectsBtn: document.getElementById('seeAllProjectsBtn'),
     cardTasksDone: document.getElementById('cardTasksDone'),
     projectItemsList: document.getElementById('projectItemsList'),
+    completedHistorySection: document.getElementById('completedHistorySection'),
+    completedHistoryCount: document.getElementById('completedHistoryCount'),
+    completedHistoryList: document.getElementById('completedHistoryList'),
+    completedHistoryEmpty: document.getElementById('completedHistoryEmpty'),
 
     // Slide 1: Tasks Elements
     form: document.getElementById('todoForm'),
@@ -525,10 +532,15 @@
       let updatedTodo = null;
       cached = cached.map((t) => {
         if (t.id === payload.id) {
+          const isComp = payload.completed !== undefined ? (payload.completed ? 1 : 0) : t.completed;
+          let compAt = t.completed_at;
+          if (payload.completed !== undefined) {
+            compAt = isComp ? new Date().toISOString() : null;
+          }
           updatedTodo = {
             ...t,
             ...(payload.title !== undefined ? { title: payload.title } : {}),
-            ...(payload.completed !== undefined ? { completed: payload.completed ? 1 : 0 } : {}),
+            ...(payload.completed !== undefined ? { completed: isComp, completed_at: compAt } : {}),
             ...(payload.project_id !== undefined ? { project_id: payload.project_id } : {}),
           };
           return updatedTodo;
@@ -632,11 +644,10 @@
     }
   }
 
-  async function handleToggleTodo(id, currentCompleted, itemEl) {
-    itemEl.classList.add('is-busy');
+  async function executeToggleApi(id, newCompleted, itemEl) {
+    const rowEl = itemEl || document.querySelector(`.todo-item[data-id="${id}"]`);
+    if (rowEl) rowEl.classList.add('is-busy');
     setSyncing(true, 'Updating...');
-
-    const newCompleted = currentCompleted ? 0 : 1;
 
     try {
       const data = await apiRequest(API_ENDPOINT, {
@@ -650,11 +661,50 @@
     } catch (error) {
       if (error.message !== 'Unauthorized') {
         showBanner(`Could not update task status: ${error.message}`);
-        itemEl.classList.remove('is-busy');
+        if (rowEl) {
+          rowEl.classList.remove('is-busy');
+          rowEl.classList.remove('is-pending-completion');
+        }
       }
     } finally {
       setSyncing(false);
     }
+  }
+
+  function handleToggleTodo(id, currentCompleted, itemEl) {
+    const rowEl = itemEl || document.querySelector(`.todo-item[data-id="${id}"]`);
+
+    // 1. If task is already pending completion, user clicked to uncheck/undo before 5s
+    if (pendingCompletions.has(id)) {
+      const pending = pendingCompletions.get(id);
+      clearTimeout(pending.timerId);
+      pendingCompletions.delete(id);
+      if (rowEl) {
+        rowEl.classList.remove('is-pending-completion');
+      }
+      return;
+    }
+
+    // 2. If task was already completed in DB, user is marking it incomplete (immediate API call)
+    if (currentCompleted) {
+      executeToggleApi(id, 0, rowEl);
+      return;
+    }
+
+    // 3. User checks an active task: trigger 5-second undo flow
+    if (rowEl) {
+      rowEl.classList.add('is-pending-completion');
+    }
+
+    const timerId = setTimeout(async () => {
+      pendingCompletions.delete(id);
+      await executeToggleApi(id, 1, rowEl);
+    }, 5000);
+
+    pendingCompletions.set(id, {
+      timerId,
+      startTime: Date.now(),
+    });
   }
 
   async function handleSaveTitle(id, rawTitle, originalCategory, originalSubproject = null) {
@@ -697,7 +747,12 @@
   }
 
   async function handleDeleteTodo(id, itemEl) {
-    itemEl.classList.add('is-busy');
+    if (pendingCompletions.has(id)) {
+      clearTimeout(pendingCompletions.get(id).timerId);
+      pendingCompletions.delete(id);
+    }
+
+    if (itemEl) itemEl.classList.add('is-busy');
     setSyncing(true, 'Deleting...');
 
     try {
@@ -710,7 +765,7 @@
     } catch (error) {
       if (error.message !== 'Unauthorized') {
         showBanner(`Could not delete task: ${error.message}`);
-        itemEl.classList.remove('is-busy');
+        if (itemEl) itemEl.classList.remove('is-busy');
       }
     } finally {
       setSyncing(false);
@@ -720,6 +775,13 @@
   async function handleClearCompleted() {
     const completedTasks = state.todos.filter((t) => Boolean(t.completed));
     if (completedTasks.length === 0) return;
+
+    completedTasks.forEach((task) => {
+      if (pendingCompletions.has(task.id)) {
+        clearTimeout(pendingCompletions.get(task.id).timerId);
+        pendingCompletions.delete(task.id);
+      }
+    });
 
     elements.clearCompletedBtn.disabled = true;
     setSyncing(true, 'Clearing...');
@@ -1491,6 +1553,93 @@
         elements.projectItemsList.appendChild(wrapper);
       });
     });
+
+    renderCompletedHistory();
+  }
+
+  function formatCompletedTimestamp(rawDate) {
+    if (!rawDate) return 'Completed';
+    let dateStr = String(rawDate).trim();
+    if (!dateStr.includes('T') && !dateStr.endsWith('Z')) {
+      dateStr = dateStr.replace(' ', 'T') + 'Z';
+    }
+    const dateObj = new Date(dateStr);
+    if (isNaN(dateObj.getTime())) {
+      return String(rawDate);
+    }
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(dateObj);
+  }
+
+  function renderCompletedHistory() {
+    if (!elements.completedHistoryList) return;
+
+    const completedTasks = state.todos.filter((t) => Boolean(t.completed));
+
+    if (elements.completedHistoryCount) {
+      elements.completedHistoryCount.textContent = completedTasks.length;
+    }
+
+    if (completedTasks.length === 0) {
+      elements.completedHistoryList.innerHTML = '';
+      if (elements.completedHistoryEmpty) {
+        elements.completedHistoryEmpty.classList.remove('hidden');
+      }
+      return;
+    }
+
+    if (elements.completedHistoryEmpty) {
+      elements.completedHistoryEmpty.classList.add('hidden');
+    }
+
+    // Sort chronologically, newest first based on completed_at, falling back to created_at
+    const sorted = [...completedTasks].sort((a, b) => {
+      const parseTime = (item) => {
+        const ts = item.completed_at || item.created_at;
+        if (!ts) return 0;
+        let s = String(ts).trim();
+        if (!s.includes('T') && !s.endsWith('Z')) s = s.replace(' ', 'T') + 'Z';
+        const t = new Date(s).getTime();
+        return isNaN(t) ? 0 : t;
+      };
+      return parseTime(b) - parseTime(a);
+    });
+
+    elements.completedHistoryList.innerHTML = '';
+
+    sorted.forEach((todo) => {
+      const parsed = parseTask(todo);
+      const timeFormatted = formatCompletedTimestamp(todo.completed_at || todo.created_at);
+
+      const itemEl = document.createElement('div');
+      itemEl.className = 'history-item';
+      itemEl.dataset.id = todo.id;
+
+      itemEl.innerHTML = `
+        <div class="history-item-left">
+          <div class="history-check-icon" aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          </div>
+          <div class="history-details">
+            <span class="history-title" title="${escapeHtml(parsed.cleanTitle)}">${escapeHtml(parsed.cleanTitle)}</span>
+            <div class="history-tags">
+              <span>${escapeHtml(parsed.category)}</span>
+              ${parsed.subproject ? `<span>/ ${escapeHtml(parsed.subproject)}</span>` : ''}
+            </div>
+          </div>
+        </div>
+        <span class="history-timestamp">${escapeHtml(timeFormatted)}</span>
+      `;
+
+      elements.completedHistoryList.appendChild(itemEl);
+    });
   }
 
   // ================= TASK RENDERING =================
@@ -1542,19 +1691,24 @@
 
       visibleTodos.forEach((todo) => {
         const isCompleted = Boolean(todo.completed);
+        const isPending = pendingCompletions.has(todo.id);
         const isEditing = state.editingId === todo.id;
         const parsed = parseTask(todo);
 
         const li = document.createElement('li');
-        li.className = `todo-item ${isCompleted ? 'is-completed' : ''}`;
+        li.className = `todo-item ${isCompleted ? 'is-completed' : ''} ${isPending ? 'is-pending-completion' : ''}`;
         li.dataset.id = todo.id;
+
+        if (isPending) {
+          pendingCompletions.get(todo.id).li = li;
+        }
 
         const checkbox = document.createElement('button');
         checkbox.type = 'button';
         checkbox.className = 'custom-checkbox';
         checkbox.setAttribute(
           'aria-label',
-          isCompleted ? 'Mark task as incomplete' : 'Mark task as complete'
+          isCompleted || isPending ? 'Mark task as incomplete' : 'Mark task as complete'
         );
         checkbox.innerHTML = `
           <svg class="checkbox-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
@@ -1614,10 +1768,29 @@
         const actions = document.createElement('div');
         actions.className = 'item-actions';
 
+        // Undo button visible while 5-second countdown is active
+        const undoBtn = document.createElement('button');
+        undoBtn.type = 'button';
+        undoBtn.className = 'undo-btn';
+        undoBtn.title = 'Undo completion';
+        undoBtn.setAttribute('aria-label', `Undo completion for "${parsed.cleanTitle}"`);
+        undoBtn.innerHTML = `
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7v6h6"></path>
+            <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path>
+          </svg>
+          <span>Undo</span>
+        `;
+        undoBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          handleToggleTodo(todo.id, isCompleted, li);
+        });
+        actions.appendChild(undoBtn);
+
         if (!isEditing) {
           const editBtn = document.createElement('button');
           editBtn.type = 'button';
-          editBtn.className = 'icon-btn';
+          editBtn.className = 'icon-btn icon-btn-edit';
           editBtn.setAttribute('aria-label', `Edit "${parsed.cleanTitle}"`);
           editBtn.innerHTML = `
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

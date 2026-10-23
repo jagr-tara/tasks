@@ -592,12 +592,14 @@ html:not(.is-authenticated) #appLayout {
 }
 
 .todo-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-12);
   padding: var(--space-12) var(--space-8);
   border-radius: 16px;
   transition: background-color 0.2s;
+  overflow: hidden;
 }
 
 .todo-item:hover {
@@ -607,6 +609,85 @@ html:not(.is-authenticated) #appLayout {
 .todo-item.is-busy {
   opacity: 0.5;
   pointer-events: none;
+}
+
+/* 5-Second Undo Pending Completion State */
+.todo-item.is-pending-completion {
+  background-color: var(--color-subtle-box);
+}
+
+.todo-item.is-pending-completion .custom-checkbox {
+  background-color: var(--color-dark);
+  border-color: var(--color-dark);
+}
+
+.todo-item.is-pending-completion .checkbox-icon {
+  opacity: 1;
+}
+
+.todo-item.is-pending-completion .todo-title {
+  text-decoration: line-through;
+  color: var(--color-muted);
+}
+
+/* 5-second collapsing progress bar pseudo-element avoiding layout shifts */
+.todo-item.is-pending-completion::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 100%;
+  background: var(--color-dark);
+  border-radius: 0 0 16px 16px;
+  animation: collapseUndoProgress 5s linear forwards;
+  pointer-events: none;
+  z-index: 2;
+}
+
+@keyframes collapseUndoProgress {
+  0% {
+    width: 100%;
+    opacity: 1;
+  }
+  98% {
+    width: 0%;
+    opacity: 1;
+  }
+  100% {
+    width: 0%;
+    opacity: 0;
+  }
+}
+
+.undo-btn {
+  display: none;
+}
+
+.todo-item.is-pending-completion .undo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-dark);
+  background-color: #FFFFFF;
+  border: 1px solid var(--color-border);
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: background-color 0.15s, transform 0.1s;
+}
+
+.todo-item.is-pending-completion .undo-btn:hover {
+  background-color: var(--color-pill-track);
+}
+
+.todo-item.is-pending-completion .icon-btn-edit,
+.todo-item.is-pending-completion .icon-btn-delete {
+  display: none !important;
 }
 
 /* Circular Checkbox */
@@ -1191,6 +1272,99 @@ html:not(.is-authenticated) #appLayout {
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--color-dark);
+}
+
+/* ================= COMPLETED HISTORY CARD ================= */
+.completed-history-card {
+  padding: var(--space-8) var(--space-20);
+}
+
+.history-count-badge {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  color: var(--color-muted);
+  background-color: var(--color-pill-track);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+
+.completed-history-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  padding: var(--space-12) 0;
+  border-bottom: 1px solid var(--color-border);
+  transition: background-color 0.15s ease;
+}
+
+.history-item:last-child {
+  border-bottom: none;
+}
+
+.history-item-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  min-width: 0;
+  flex: 1;
+}
+
+.history-check-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-dark);
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.history-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.history-title {
+  font-size: var(--font-base);
+  font-weight: 500;
+  color: var(--color-dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
+.history-timestamp {
+  font-size: var(--font-xs);
+  font-weight: 500;
+  color: var(--color-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  letter-spacing: -0.01em;
+}
+
+.completed-history-empty {
+  padding: var(--space-24) var(--space-16);
+  text-align: center;
+  color: var(--color-muted);
+  font-size: var(--font-sm);
 }
 
 /* ================= SETTINGS & PROJECT MANAGEMENT STYLES ================= */

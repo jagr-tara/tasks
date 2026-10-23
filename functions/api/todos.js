@@ -49,7 +49,7 @@ export async function onRequestGet(context) {
 
   try {
     const { results } = await env.DB.prepare(
-      "SELECT id, title, completed, created_at, project_id FROM todos ORDER BY created_at DESC, id DESC"
+      "SELECT id, title, completed, created_at, project_id, completed_at FROM todos ORDER BY created_at DESC, id DESC"
     ).all();
 
     return jsonResponse({ todos: results || [] });
@@ -83,21 +83,21 @@ export async function onRequestPost(context) {
     let createdTask = null;
     try {
       createdTask = await env.DB.prepare(
-        "INSERT INTO todos (title, completed, created_at, project_id) VALUES (?, 0, datetime('now'), ?) RETURNING id, title, completed, created_at, project_id"
+        "INSERT INTO todos (title, completed, created_at, project_id, completed_at) VALUES (?, 0, datetime('now'), ?, NULL) RETURNING id, title, completed, created_at, project_id, completed_at"
       )
         .bind(title, projectId)
         .first();
     } catch {
       // Fallback for environments lacking RETURNING support
       const insertResult = await env.DB.prepare(
-        "INSERT INTO todos (title, completed, created_at, project_id) VALUES (?, 0, datetime('now'), ?)"
+        "INSERT INTO todos (title, completed, created_at, project_id, completed_at) VALUES (?, 0, datetime('now'), ?, NULL)"
       )
         .bind(title, projectId)
         .run();
 
       const lastRowId = insertResult.meta?.last_row_id;
       createdTask = await env.DB.prepare(
-        "SELECT id, title, completed, created_at, project_id FROM todos WHERE id = ?"
+        "SELECT id, title, completed, created_at, project_id, completed_at FROM todos WHERE id = ?"
       )
         .bind(lastRowId)
         .first();
@@ -128,7 +128,7 @@ export async function onRequestPut(context) {
     }
 
     const existingTask = await env.DB.prepare(
-      "SELECT id, title, completed, created_at, project_id FROM todos WHERE id = ?"
+      "SELECT id, title, completed, created_at, project_id, completed_at FROM todos WHERE id = ?"
     )
       .bind(id)
       .first();
@@ -145,10 +145,13 @@ export async function onRequestPut(context) {
     }
 
     let updatedCompleted = existingTask.completed;
+    let hasCompletedChange = false;
     if (typeof payload.completed === "boolean") {
       updatedCompleted = payload.completed ? 1 : 0;
+      hasCompletedChange = true;
     } else if (payload.completed !== undefined) {
       updatedCompleted = Number(payload.completed) ? 1 : 0;
+      hasCompletedChange = true;
     }
 
     const updatedProjectId =
@@ -156,14 +159,30 @@ export async function onRequestPut(context) {
         ? (payload.project_id !== null && payload.project_id !== "" ? Number(payload.project_id) : null)
         : existingTask.project_id;
 
-    await env.DB.prepare(
-      "UPDATE todos SET title = ?, completed = ?, project_id = ? WHERE id = ?"
-    )
-      .bind(updatedTitle, updatedCompleted, updatedProjectId, id)
-      .run();
+    if (hasCompletedChange) {
+      if (updatedCompleted === 1) {
+        await env.DB.prepare(
+          "UPDATE todos SET title = ?, completed = ?, project_id = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?"
+        )
+          .bind(updatedTitle, updatedCompleted, updatedProjectId, id)
+          .run();
+      } else {
+        await env.DB.prepare(
+          "UPDATE todos SET title = ?, completed = ?, project_id = ?, completed_at = NULL WHERE id = ?"
+        )
+          .bind(updatedTitle, updatedCompleted, updatedProjectId, id)
+          .run();
+      }
+    } else {
+      await env.DB.prepare(
+        "UPDATE todos SET title = ?, completed = ?, project_id = ? WHERE id = ?"
+      )
+        .bind(updatedTitle, updatedCompleted, updatedProjectId, id)
+        .run();
+    }
 
     const updatedTask = await env.DB.prepare(
-      "SELECT id, title, completed, created_at, project_id FROM todos WHERE id = ?"
+      "SELECT id, title, completed, created_at, project_id, completed_at FROM todos WHERE id = ?"
     )
       .bind(id)
       .first();

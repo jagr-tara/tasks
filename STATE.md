@@ -1,6 +1,6 @@
 # Application State & Architecture
 
-**Last Updated:** 2026-10-22  
+**Last Updated:** 2026-10-23  
 **Target Domain:** https://tasks.jagratara.com  
 **Runtime:** Cloudflare Pages + Cloudflare D1 Database  
 
@@ -31,6 +31,12 @@ The user interface follows a single-page, 3-slide horizontal viewport design wit
 - **Metrics Grid:**
   - Tasks Done card (`#cardTasksDone`) with clickable navigation to task list.
   - Completion Rate card (`#avgDailyFocusValue`).
+- **Completed History Log (`#completedHistorySection`):**
+  - Section header with total completed count badge (`#completedHistoryCount`).
+  - Completed History card (`.completed-history-card`) with dynamic list container (`#completedHistoryList`).
+  - Displays all tasks where `completed == 1`, sorted chronologically (newest first).
+  - Formats `completed_at` timestamps to exact date and time (e.g., `'Oct 23, 2:15 PM'`), falling back to `created_at` if missing.
+  - Includes empty state container (`#completedHistoryEmpty`).
 
 ### Slide 1: Task Management (`#tasksPage`)
 - **Header:** Title ("Tasks") with session lock button (`#lockBtn`).
@@ -39,6 +45,11 @@ The user interface follows a single-page, 3-slide horizontal viewport design wit
 - **Task List Card (`.list-card`):**
   - Animated skeleton loader (`#loadingSkeleton`).
   - Task list (`#todoList`) rendering tasks with completion toggles, project badges, inline editing, and deletion.
+  - **The 5-Second Undo Delayed-Completion UX:**
+    - Checking an active task does not immediately send an API PUT request or remove it from the DOM.
+    - Adds `.is-pending-completion` class to the task row, rendering a slick 5-second collapsing progress bar pseudo-element (`::after`) with zero layout shift and an Undo action button.
+    - Starts a 5-second `setTimeout`. If the timer expires, the API PUT request fires (`completed: 1`), and the task is removed from the active view.
+    - If the user unchecks the checkbox or clicks Undo before 5 seconds, `clearTimeout` executes, the animation is cancelled/reversed, and no API call is made.
   - Empty state container (`#emptyState`).
   - List footer: Remaining counter (`#itemsLeft`), "Clear completed" action (`#clearCompletedBtn`), and sync indicator (`#syncStatus`).
 - **Add Task Card (`.add-task-card`):**
@@ -89,6 +100,7 @@ The database schema is defined in [schema.sql](file:///A:/jagratara.com/tasks/sc
 | `title` | TEXT | NOT NULL | Task description (supports bracket tag prefix e.g. `[Project / Subproject]`) |
 | `completed` | INTEGER | NOT NULL DEFAULT 0 | Completion status (`0` = active, `1` = completed) |
 | `created_at` | DATETIME | NOT NULL DEFAULT CURRENT_TIMESTAMP | Task creation timestamp |
+| `completed_at` | DATETIME | NULL | Timestamp when task was marked complete (`CURRENT_TIMESTAMP` on completion, `NULL` on incomplete) |
 | `project_id` | INTEGER | NULL, REFERENCES `projects(id)` | Foreign key referencing associated project or sub-project |
 
 ### Indexes
@@ -118,9 +130,9 @@ The database schema is defined in [schema.sql](file:///A:/jagratara.com/tasks/sc
 ### Endpoints: `/api/todos`
 | Method | Endpoint | Request Body / Params | Response | Description |
 |---|---|---|---|---|
-| `GET` | `/api/todos` | None | `{ todos: [...] }` | Retrieves all tasks with `id, title, completed, created_at, project_id` ordered by `created_at DESC, id DESC`. |
-| `POST` | `/api/todos` | `{ "title": "string", "project_id"?: number\|null }` | `{ "todo": { id, title, completed, created_at, project_id } }` (201) | Creates a new task with associated `project_id`. |
-| `PUT` | `/api/todos` | `{ "id": number, "title"?: string, "completed"?: boolean\|number, "project_id"?: number\|null }` | `{ "todo": { id, title, completed, created_at, project_id } }` (200) | Updates task title, completion status, or project association. |
+| `GET` | `/api/todos` | None | `{ todos: [...] }` | Retrieves all tasks with `id, title, completed, created_at, project_id, completed_at` ordered by `created_at DESC, id DESC`. |
+| `POST` | `/api/todos` | `{ "title": "string", "project_id"?: number\|null }` | `{ "todo": { id, title, completed, created_at, project_id, completed_at: null } }` (201) | Creates a new task with associated `project_id` and initial `completed_at: null`. |
+| `PUT` | `/api/todos` | `{ "id": number, "title"?: string, "completed"?: boolean\|number, "project_id"?: number\|null }` | `{ "todo": { id, title, completed, created_at, project_id, completed_at } }` (200) | Updates task. If `completed: 1`, sets `completed_at = CURRENT_TIMESTAMP`; if `completed: 0`, sets `completed_at = NULL`. |
 | `DELETE` | `/api/todos` | Query `?id=` or body `{ "id": number }` | `{ "success": true, "id": number }` (200) | Deletes a task by ID. |
 | `OPTIONS`| `/api/todos` | None | Empty (204) | CORS preflight handling. |
 
