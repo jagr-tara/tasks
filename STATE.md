@@ -41,15 +41,15 @@ The user interface follows a single-page, 3-slide horizontal viewport design wit
 ### Slide 1: Task Management (`#tasksPage`)
 - **Header:** Title ("Tasks") with session lock button (`#lockBtn`).
 - **Filter Segmented Control:**
-  - Tabs: `All` (`#countAll`), `Active` (`#countActive`), `Done` (`#countCompleted`).
+  - Tabs: `Active` (`#countActive`, default selected view), `Done` (`#countCompleted`), `All` (`#countAll`).
 - **Task List Card (`.list-card`):**
   - Animated skeleton loader (`#loadingSkeleton`).
-  - Task list (`#todoList`) rendering tasks with completion toggles, project badges, inline editing, and deletion.
-  - **The 5-Second Undo Delayed-Completion UX:**
+  - Task list (`#todoList`) rendering active tasks without clutter from completed tasks.
+  - **The 5-Second Undo & Send-Out Departure UX:**
     - Checking an active task does not immediately send an API PUT request or remove it from the DOM.
     - Adds `.is-pending-completion` class to the task row, rendering a slick 5-second collapsing progress bar pseudo-element (`::after`) with zero layout shift and an Undo action button.
-    - Starts a 5-second `setTimeout`. If the timer expires, the API PUT request fires (`completed: 1`), and the task is removed from the active view.
-    - If the user unchecks the checkbox or clicks Undo before 5 seconds, `clearTimeout` executes, the animation is cancelled/reversed, and no API call is made.
+    - Starts a 5-second `setTimeout`. If the user unchecks before 5 seconds, `clearTimeout` cancels the flow and restores the active state.
+    - If the 5-second timer expires, the row transitions to `.is-sending-out`, playing a 450ms departure animation (gliding out towards the left Completed History dock and smoothly collapsing in height) before firing the PUT request. The completed task is smoothly sent out to the Completed tasks page (`Done` tab and Slide 0 Completed History), leaving the active tasks view pristine and uncluttered.
   - Empty state container (`#emptyState`).
   - List footer: Remaining counter (`#itemsLeft`), "Clear completed" action (`#clearCompletedBtn`), and sync indicator (`#syncStatus`).
 - **Add Task Card (`.add-task-card`):**

@@ -15,7 +15,7 @@
     todos: [],
     rawProjects: [],
     projects: [],
-    filter: 'all', // 'all' | 'active' | 'completed'
+    filter: 'active', // 'active' | 'completed' | 'all'
     isLoading: true,
     isProjectsLoading: false,
     isSubmitting: false,
@@ -698,7 +698,14 @@
 
     const timerId = setTimeout(async () => {
       pendingCompletions.delete(id);
-      await executeToggleApi(id, 1, rowEl);
+      const row = rowEl || document.querySelector(`.todo-item[data-id="${id}"]`);
+      if (row) {
+        row.classList.remove('is-pending-completion');
+        row.classList.add('is-sending-out');
+      }
+      // 450ms slick exit animation sending task out to the completed tasks page
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      await executeToggleApi(id, 1, row);
     }, 5000);
 
     pendingCompletions.set(id, {

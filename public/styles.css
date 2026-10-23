@@ -660,6 +660,42 @@ html:not(.is-authenticated) #appLayout {
   }
 }
 
+/* Slick "Sent Out to Completed" Exit Animation */
+.todo-item.is-sending-out {
+  pointer-events: none;
+  animation: sendOutToCompleted 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes sendOutToCompleted {
+  0% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+    max-height: 80px;
+    padding-top: var(--space-12);
+    padding-bottom: var(--space-12);
+    margin-bottom: 0;
+  }
+  30% {
+    transform: translateX(-18px) scale(0.98);
+    opacity: 0.75;
+    background-color: var(--color-subtle-box);
+  }
+  60% {
+    transform: translateX(-50px) scale(0.95);
+    opacity: 0.3;
+  }
+  100% {
+    transform: translateX(-90px) scale(0.9);
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    border: none;
+  }
+}
+
 .undo-btn {
   display: none;
 }
